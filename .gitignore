@@ -20,3 +20,9 @@ venv/
 # Mac/Windows мусор
 .DS_Store
 Thumbs.dbdebug_log.txt
+<<<<<<< HEAD
+=======
+*.json
+debug_screens/
+debug_log.txt
+>>>>>>> c285623 (Initial commit: Clean and Secure structure)
