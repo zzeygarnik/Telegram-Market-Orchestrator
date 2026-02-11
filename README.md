@@ -53,7 +53,6 @@ cd Telegram-Market-Orchestrator
 Step A: Create `config.py`
 Create a file named `config.py` in the root directory:
 
-```python
 # config.py
 DB_HOST = "your_postgres_host"
 DB_NAME = "your_db_name"
@@ -79,7 +78,6 @@ Step B: Marketplace Cookies (Required for Parsing) To bypass captchas and login 
 
 2. Обнови раздел "Docker Deployment" (добавили проброс куков):
 
-```markdown
 3. Docker Deployment
 The project includes a Dockerfile for building the image.
 
@@ -142,12 +140,11 @@ git clone [https://github.com/zzeygarnik/Telegram-Market-Orchestrator.git](https
 cd Telegram-Market-Orchestrator
 
 2. Конфигурация
-⚠️ **Важно:** Файлы конфигурации и куки сессий исключены из репозитория в целях безопасности.
+⚠️ Важно: Файлы конфигурации и куки сессий исключены из репозитория в целях безопасности.
 
-**Шаг А: Создание `config.py`**
+Шаг А: Создание `config.py`
 Создайте файл `config.py` в корне проекта:
 
-```python
 # config.py
 DB_HOST = "your_postgres_host"
 DB_NAME = "your_db_name"
@@ -172,7 +169,6 @@ DEEPSEEK_API_KEY = "..." # (Опционально) Для AI-анализа
 
 2. Обнови раздел "Развертывание в Docker":
 
-```markdown
 3. Развертывание в Docker
 Проект готов к сборке через Dockerfile.
 
