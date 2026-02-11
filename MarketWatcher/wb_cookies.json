@@ -1,0 +1,71 @@
+[
+    {
+        "domain": ".wildberries.ru",
+        "expirationDate": 1771450320.122196,
+        "hostOnly": false,
+        "httpOnly": true,
+        "name": "wbx-validation-key",
+        "path": "/",
+        "sameSite": "lax",
+        "secure": true,
+        "session": false,
+        "storeId": "0",
+        "value": "6bebfe53-6c5a-41c7-a922-f8eb2bda4ead",
+        "id": 1
+    },
+    {
+        "domain": ".www.wildberries.ru",
+        "expirationDate": 1797598366,
+        "hostOnly": false,
+        "httpOnly": false,
+        "name": "_wbauid",
+        "path": "/",
+        "sameSite": "unspecified",
+        "secure": false,
+        "session": false,
+        "storeId": "0",
+        "value": "9778087911766062366",
+        "id": 2
+    },
+    {
+        "domain": "www.wildberries.ru",
+        "expirationDate": 1773838367.635447,
+        "hostOnly": true,
+        "httpOnly": false,
+        "name": "_cp",
+        "path": "/",
+        "sameSite": "unspecified",
+        "secure": false,
+        "session": false,
+        "storeId": "0",
+        "value": "1",
+        "id": 3
+    },
+    {
+        "domain": "www.wildberries.ru",
+        "hostOnly": true,
+        "httpOnly": true,
+        "name": "routeb",
+        "path": "/",
+        "sameSite": "unspecified",
+        "secure": false,
+        "session": true,
+        "storeId": "0",
+        "value": "1768858313.871.70.231600|d4ae5f6f13c2fcce539dd766ca4b41fc",
+        "id": 4
+    },
+    {
+        "domain": "www.wildberries.ru",
+        "expirationDate": 1770067908.246378,
+        "hostOnly": true,
+        "httpOnly": false,
+        "name": "x_wbaas_token",
+        "path": "/",
+        "sameSite": "no_restriction",
+        "secure": true,
+        "session": false,
+        "storeId": "0",
+        "value": "1.1000.d3f9ac3f5f514eebb890be8de5523b29.MTV8MTUxLjIzNi41LjE2OHxNb3ppbGxhLzUuMCAoV2luZG93cyBOVCAxMC4wOyBXaW42NDsgeDY0KSBBcHBsZVdlYktpdC81MzcuMzYgKEtIVE1MLCBsaWtlIEdlY2tvKSBDaHJvbWUvMTQyLjAuMC4wIFNhZmFyaS81MzcuMzYgT1BSLzEyNi4wLjAuMHwxNzcwMDY3OTA3fHJldXNhYmxlfDJ8ZXlKb1lYTm9Jam9pSW4wPXwwfDN8MTc2OTQ2MzEwN3wx.MEQCID34mYb2Ne4Ve/xeZ+H4Xm1HwhJd8WznJkVucZkC4djeAiAcWt1c60radylfnBAOWX7FZ7iirsKoqS07I/cg0HoYTA==",
+        "id": 5
+    }
+    ]

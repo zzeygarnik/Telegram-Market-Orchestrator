@@ -1,0 +1,9 @@
+pyrogram
+tgcrypto
+openai
+streamlit
+pandas
+watchdog
+psycopg2-binary
+playwright
+playwright-stealth

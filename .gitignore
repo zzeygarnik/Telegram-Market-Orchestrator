@@ -1,0 +1,22 @@
+# Конфиги и секреты (САМОЕ ВАЖНОЕ)
+config.py
+*.session
+*.session-journal
+
+# Логи и базы данных
+*.log
+*.db
+leads.db
+watcher.pid
+session_stats.json
+crash_log.txt
+
+# Системные файлы Python
+pycache/
+*.py[cod]
+venv/
+.env
+
+# Mac/Windows мусор
+.DS_Store
+Thumbs.db
