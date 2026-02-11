@@ -8,53 +8,69 @@ import argparse
 import traceback
 from datetime import datetime
 
-# === ДИАГНОСТИКА ПУТЕЙ ===
-print(f"📍 МАРКЕР ПРОВЕРКИ: Скрипт запущен из: {os.path.abspath(__file__)}")
-print(f"🐍 Python исполняемый файл: {sys.executable}")
+# === 1. НАСТРОЙКА ПУТЕЙ (Чтобы видеть db_async в корне) ===
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # /app/MarketWatcher
+ROOT_DIR = os.path.dirname(BASE_DIR)                  # /app
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
 
-# Настраиваем пути для импорта локальных модулей
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(BASE_DIR)
-sys.path.append(ROOT_DIR)
+print(f"📍 МАРКЕР ПРОВЕРКИ: Скрипт запущен из: {BASE_DIR}")
+print(f"📂 Корневая директория проекта: {ROOT_DIR}")
 
 import config
 
-# === ИМПОРТЫ ЗАВИСИМОСТЕЙ ===
+# === 2. ИМПОРТЫ ЗАВИСИМОСТЕЙ ===
 try:
-    from db_async import AsyncMarketDB
+    # Пытаемся импортировать класс AsyncDatabase из db_async.py
+    from db_async import AsyncDatabase
     from market_ai import analyze_review
-except ImportError:
-    print("⚠️ Warning: db_async or market_ai not found. Running in limited mode.")
-    AsyncMarketDB = None
+    print("✅ DB Module: Успешно импортирован.")
+except ImportError as e:
+    print(f"⚠️ Warning: Ошибка импорта модулей БД/AI: {e}")
+    print(f"   Убедитесь, что файлы db_async.py и market_ai.py лежат в {ROOT_DIR}")
+    AsyncDatabase = None
     analyze_review = lambda x: ("MIMO", 0.0, "No AI")
 
 from playwright.async_api import async_playwright
 
-# === УНИВЕРСАЛЬНЫЙ ИМПОРТ STEALTH ===
-stealth_async = None
-try:
-    # Вариант 1: Стандартный для новых версий
-    from playwright_stealth import stealth_async
-    print("✅ СИСТЕМА: stealth_async найден напрямую.")
-except ImportError:
-    try:
-        # Вариант 2: Если функция лежит внутри модуля stealth
-        from playwright_stealth.stealth import stealth_async
-        print("✅ СИСТЕМА: stealth_async найден в подмодуле .stealth")
-    except ImportError:
-        try:
-            # Вариант 3: Пробуем импортировать как обычный stealth (он часто работает и там, и там)
-            from playwright_stealth import stealth
-            stealth_async = stealth
-            print("✅ СИСТЕМА: Использован базовый stealth вместо async-версии")
-        except ImportError:
-            print("❌ КРИТИЧЕСКАЯ ОШИБКА: Ни один из методов импорта не сработал.")
+# === 3. ВСТРОЕННАЯ МАСКИРОВКА (Вместо глючного playwright-stealth) ===
+async def apply_stealth(page):
+    """
+    Внедряет JS-скрипты для скрытия факта автоматизации.
+    Работает надежнее, чем внешняя библиотека.
+    """
+    await page.add_init_script("""
+        // 1. Подменяем свойство webdriver
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined
+        });
 
-if stealth_async:
-    print("🚀 Stealth-маскировка готова к работе!")
-else:
-    import traceback
-    traceback.print_exc()
+        // 2. Эмулируем chrome
+        window.chrome = {
+            runtime: {},
+            loadTimes: function() {},
+            csi: function() {},
+            app: {}
+        };
+
+        // 3. Подменяем плагины
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => [1, 2, 3, 4, 5]
+        });
+
+        // 4. Подменяем языки
+        Object.defineProperty(navigator, 'languages', {
+            get: () => ['ru-RU', 'ru', 'en-US', 'en']
+        });
+        
+        // 5. Маскируем разрешения
+        const originalQuery = window.navigator.permissions.query;
+        window.navigator.permissions.query = (parameters) => (
+            parameters.name === 'notifications' ?
+            Promise.resolve({ state: Notification.permission }) :
+            originalQuery(parameters)
+        );
+    """)
 
 PID_FILE = os.path.join(BASE_DIR, "market.pid")
 
@@ -69,7 +85,8 @@ def get_random_ua():
 
 class MarketParser:
     def __init__(self):
-        self.db = AsyncMarketDB() if AsyncMarketDB else None
+        # Инициализируем правильный класс
+        self.db = AsyncDatabase() if AsyncDatabase else None
 
     async def _load_cookies(self, context, platform):
         """Загрузка куков из корня проекта"""
@@ -89,6 +106,7 @@ class MarketParser:
                             "path": c.get("path", "/"),
                             "secure": c.get("secure", True)
                         }
+                        # Исправление SameSite для Playwright
                         if "sameSite" in c and c["sameSite"] in ["Strict", "Lax", "None"]:
                             clean_c["sameSite"] = c["sameSite"]
                         else:
@@ -146,20 +164,18 @@ class MarketParser:
         except: return {'found': False}
 
     async def _fetch_from_html_fallback(self, page, sku, url):
-        print(f"   ⚓ Включаем Stealth HTML-парсинг...")
+        print(f"   ⚓ Включаем Stealth HTML-парсинг (Native JS)...")
         try:
-            if stealth_async:
-                await stealth_async(page)
+            # ПРИМЕНЯЕМ ВСТРОЕННЫЙ STEALTH
+            await apply_stealth(page)
             
             await page.goto(url, wait_until='domcontentloaded', timeout=45000)
             
-            # Ждем появления цены
             try:
                 await page.wait_for_selector('.price-block__final-price, .product-page__price', timeout=10000)
             except: pass 
 
             price = 0
-            # Актуальные селекторы
             price_selectors = [
                 'ins.price-block__final-price', 
                 '.price-block__final-price', 
@@ -187,7 +203,34 @@ class MarketParser:
             return {'found': True, 'price': price, 'rating': 0.0, 'name': 'WB Item'}
         except Exception as e:
             print(f"   ❌ Ошибка HTML: {e}")
+            traceback.print_exc()
             return {'found': False}
+
+    # === РАБОТА С БД (ОБЕРТКИ) ===
+    async def add_item_to_watch(self, platform, sku, name):
+        if not self.db: return None
+        try:
+            await self.db.execute("""
+                INSERT INTO items_to_watch (platform, sku, name, last_checked) 
+                VALUES ($1, $2, $3, NOW())
+                ON CONFLICT (platform, sku) DO NOTHING
+            """, platform, str(sku), name)
+            
+            row = await self.db.fetchrow("SELECT id FROM items_to_watch WHERE platform=$1 AND sku=$2", platform, str(sku))
+            return row['id'] if row else None
+        except Exception as e:
+            print(f"DB Error: {e}")
+            return None
+
+    async def save_daily_stats(self, item_id, price, rating, reviews_count):
+        if not self.db: return
+        try:
+            await self.db.execute("""
+                INSERT INTO daily_stats (item_id, price, rating_val, reviews_count)
+                VALUES ($1, $2, $3, $4)
+            """, item_id, price, rating, reviews_count)
+        except Exception as e:
+            print(f"Stats Error: {e}")
 
     async def parse_item(self, platform, sku, url, scan_limit=20, parse_all=False):
         print(f"\n🔎 [{platform}] Парсинг SKU: {sku}...")
@@ -196,27 +239,28 @@ class MarketParser:
             browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
             ctx = await browser.new_context(user_agent=get_random_ua(), viewport={'width': 1920, 'height': 1080})
             
-            # ЗАГРУЗКА КУКОВ
             await self._load_cookies(ctx, platform)
             
             page = await ctx.new_page()
             
             if platform == "WB":
-                # 1. API
+                # 1. Сначала пробуем быстрое API
                 data = await self._fetch_card_data_api(sku, ctx.request)
                 
-                # 2. HTML Fallback
+                # 2. Если API подвело или цена 0, включаем HTML парсинг
                 if not data.get('found') or data.get('price') == 0:
                      html_data = await self._fetch_from_html_fallback(page, sku, url)
-                     if html_data['found']:
+                     if html_data['found'] and html_data.get('price') > 0:
                          data.update(html_data)
 
                 if data.get('found'):
                     print(f"   ✅ НАЙДЕНО: {data.get('name')} | {data.get('price')} ₽")
                     if self.db:
-                        item_id = await self.db.add_item_to_watch(platform, sku, data.get('name'))
+                        item_id = await self.add_item_to_watch(platform, sku, data.get('name'))
                         if item_id:
-                            await self.db.save_daily_stats(item_id, data.get('price'), data.get('rating', 0), 0)
+                            await self.save_daily_stats(item_id, data.get('price'), data.get('rating', 0), 0)
+                    else:
+                        print("   ⚠️ Данные не сохранены (нет подключения к БД)")
                 else:
                     print("   ❌ Не удалось распарсить товар.")
 
@@ -230,7 +274,7 @@ def extract_sku(input_str):
     return input_str
 
 async def main():
-    print("--- 🚀 MARKET WATCHER V2.4 (Stealth Docker) ---")
+    print("--- 🚀 MARKET WATCHER V2.4 (Stealth Native) ---")
     parser = argparse.ArgumentParser()
     parser.add_argument('--target', type=str)
     parser.add_argument('--market', type=str)
@@ -239,7 +283,13 @@ async def main():
     with open(PID_FILE, 'w') as f: f.write(str(os.getpid()))
     
     market_parser = MarketParser()
-    if market_parser.db: await market_parser.db.connect()
+    
+    # Попытка подключения к БД
+    if market_parser.db: 
+        try:
+            await market_parser.db.connect()
+        except Exception as e:
+            print(f"❌ Ошибка соединения с БД: {e}")
     
     try:
         if args.target:
