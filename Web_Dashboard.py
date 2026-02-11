@@ -7,10 +7,10 @@ import sys
 import signal
 import subprocess
 import warnings
+from datetime import datetime
 
-# === ПОДАВЛЕНИЕ ПРЕДУПРЕЖДЕНИЙ (ЧИСТИМ ЛОГИ) ===
+# === ПОДАВЛЕНИЕ ПРЕДУПРЕЖДЕНИЙ ===
 warnings.filterwarnings("ignore", category=UserWarning)
-# ===============================================
 
 # === ПОДКЛЮЧАЕМ КОНФИГ ===
 try:
@@ -22,23 +22,22 @@ except ImportError:
 # === НАСТРОЙКИ ПУТЕЙ ===
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PID_FILE = os.path.join(BASE_DIR, "watcher.pid")
-BOT_LOG_FILE = os.path.join(BASE_DIR, "bot_output.log") # Файл для логов бота
+BOT_LOG_FILE = os.path.join(BASE_DIR, "bot_output.log")
 BOT_SCRIPT = os.path.join(BASE_DIR, "TheWatcher.py")
 
-# Пути для MarketWatcher
 MARKET_DIR = os.path.join(BASE_DIR, "MarketWatcher")
 MARKET_SCRIPT = os.path.join(MARKET_DIR, "parser_engine.py")
 
 st.set_page_config(page_title="ZGRNK Control Center", page_icon="👁", layout="wide")
 
-# --- ФУНКЦИИ БАЗЫ ДАННЫХ ---
+if 'session_start' not in st.session_state:
+    st.session_state['session_start'] = pd.Timestamp.now()
+
+# --- ФУНКЦИИ ---
 def get_connection():
     return psycopg2.connect(
-        host=config.DB_HOST,
-        database=config.DB_NAME,
-        user=config.DB_USER,
-        password=config.DB_PASS,
-        port=config.DB_PORT
+        host=config.DB_HOST, database=config.DB_NAME,
+        user=config.DB_USER, password=config.DB_PASS, port=config.DB_PORT
     )
 
 def load_data():
@@ -48,8 +47,18 @@ def load_data():
         df = pd.read_sql(query, conn)
         conn.close()
         return df
-    except Exception as e:
-        return pd.DataFrame()
+    except Exception: return pd.DataFrame()
+
+def get_global_stats():
+    try:
+        conn = get_connection(); cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM leads")
+        total_processed = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM leads WHERE role='SPAM'")
+        total_spam = cur.fetchone()[0]
+        conn.close()
+        return total_processed, total_spam
+    except Exception: return 0, 0
 
 def load_chats():
     try:
@@ -58,262 +67,174 @@ def load_chats():
         df = pd.read_sql(query, conn)
         conn.close()
         return df
-    except Exception as e:
-        return pd.DataFrame()
+    except Exception: return pd.DataFrame()
 
 def add_new_chat(link, title, depth):
     try:
-        conn = get_connection()
-        cur = conn.cursor()
-        if not title:
-            title = link.split('/')[-1] if '/' in link else link
-        
-        cur.execute(
-            "INSERT INTO monitored_chats (chat_link, chat_title, is_active, depth, last_scan_id) VALUES (%s, %s, TRUE, %s, 0)",
-            (link, title, depth)
-        )
-        conn.commit()
-        conn.close()
+        conn = get_connection(); cur = conn.cursor()
+        if not title: title = link.split('/')[-1] if '/' in link else link
+        cur.execute("INSERT INTO monitored_chats (chat_link, chat_title, is_active, depth, last_scan_id) VALUES (%s, %s, TRUE, %s, 0)", (link, title, depth))
+        conn.commit(); conn.close()
         return True
     except Exception as e:
-        st.error(f"Ошибка добавления: {e}")
-        return False
+        st.error(f"Ошибка добавления: {e}"); return False
 
 def save_changes(edited_df):
     try:
-        conn = get_connection()
-        cur = conn.cursor()
-        
+        conn = get_connection(); cur = conn.cursor()
         to_delete = edited_df[edited_df['delete'] == True]
         for index, row in to_delete.iterrows():
             cur.execute("DELETE FROM monitored_chats WHERE chat_link=%s", (row['chat_link'],))
-        
         to_update = edited_df[edited_df['delete'] == False]
         for index, row in to_update.iterrows():
-            cur.execute(
-                """
-                UPDATE monitored_chats 
-                SET is_active=%s, depth=%s, chat_title=%s 
-                WHERE chat_link=%s
-                """,
-                (bool(row['is_active']), int(row['depth']), str(row['chat_title']), row['chat_link'])
-            )
-            
-        conn.commit()
-        conn.close()
-        st.success(f"Сохранено! Удалено: {len(to_delete)}, Обновлено: {len(to_update)}")
-        time.sleep(1)
-        return True
+            cur.execute("UPDATE monitored_chats SET is_active=%s, depth=%s, chat_title=%s WHERE chat_link=%s", (bool(row['is_active']), int(row['depth']), str(row['chat_title']), row['chat_link']))
+        conn.commit(); conn.close()
+        st.success(f"Сохранено!"); time.sleep(1); return True
     except Exception as e:
-        st.error(f"Ошибка сохранения: {e}")
-        return False
+        st.error(f"Ошибка сохранения: {e}"); return False
 
-# --- ФУНКЦИИ УПРАВЛЕНИЯ ПРОЦЕССОМ ---
 def get_pid_status():
     if not os.path.exists(PID_FILE): return False, "Выключено"
     try:
         with open(PID_FILE, 'r') as f:
             content = f.read().strip()
             pid = int(content.split("|")[0] if "|" in content else content)
-        try:
-            os.kill(pid, 0)
-        except OSError:
-            return False, "PID мертв (Crash)"
+        os.kill(pid, 0)
         return True, f"Работает (PID {pid})"
-    except:
-        return False, "Ошибка чтения PID"
+    except: return False, "PID мертв (Crash)"
 
 def start_bot():
-    # Очищаем старый лог перед новым запуском
-    if os.path.exists(BOT_LOG_FILE):
-        open(BOT_LOG_FILE, 'w').close()
-        
-    # Запускаем бота и перенаправляем его вывод в файл
+    if os.path.exists(BOT_LOG_FILE): open(BOT_LOG_FILE, 'w').close()
     with open(BOT_LOG_FILE, "a") as log:
-        subprocess.Popen([sys.executable, BOT_SCRIPT], cwd=BASE_DIR, stdout=log, stderr=log)
+        subprocess.Popen([sys.executable, "-u", BOT_SCRIPT], cwd=BASE_DIR, stdout=log, stderr=log)
     time.sleep(2)
 
 def stop_bot():
     if os.path.exists(PID_FILE):
         try:
             with open(PID_FILE, 'r') as f:
-                content = f.read().strip()
-                pid = int(content.split("|")[0] if "|" in content else content)
+                pid = int(f.read().strip().split("|")[0])
             os.kill(pid, signal.SIGTERM)
             time.sleep(1)
         except: pass
         if os.path.exists(PID_FILE): os.remove(PID_FILE)
 
-# Функция для чтения последних строк лога
 def read_bot_logs():
-    if not os.path.exists(BOT_LOG_FILE):
-        return ["Лог-файл пока пуст или не создан."]
+    if not os.path.exists(BOT_LOG_FILE): return ["Лог-файл пуст."]
     try:
-        with open(BOT_LOG_FILE, "r") as f:
-            lines = f.readlines()
-            return lines[-20:] # Возвращаем последние 20 строк
-    except Exception as e:
-        return [f"Ошибка чтения лога: {e}"]
+        with open(BOT_LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+            return f.readlines()[-100:] 
+    except Exception as e: return [f"Ошибка: {e}"]
 
-# --- ИНТЕРФЕЙС ---
+# --- UI ---
 st.title("🚀 ZGRNK Orchestrator")
 
-# Боковая панель
 with st.sidebar:
     st.header("Управление")
     is_running, status_msg = get_pid_status()
-    
-    st.metric("Статус Orchestrator", status_msg, delta="ON" if is_running else "OFF", delta_color="normal" if is_running else "off")
-    
-    col1, col2 = st.columns(2)
-    with col1:
+    st.metric("Статус", status_msg, delta="ON" if is_running else "OFF")
+    c1, c2 = st.columns(2)
+    with c1:
         if st.button("▶ СТАРТ", disabled=is_running, type="primary"):
-            start_bot()
-            st.rerun()
-    with col2:
+            start_bot(); st.rerun()
+    with c2:
         if st.button("⏹ СТОП", disabled=not is_running):
-            stop_bot()
-            st.rerun()
-
+            stop_bot(); st.rerun()
     st.divider()
-    
-    # === ПРОСМОТР ЛОГОВ (НОВОЕ) ===
-    st.subheader("📋 Логи бота")
-    if st.button("🔄 Обновить логи"):
-        st.rerun()
-    
-    logs = read_bot_logs()
-    st.code("".join(logs), language="text")
 
-# Основной экран
+# === БЛОК ЖИВЫХ ЛОГОВ (ИСПРАВЛЕННЫЙ) ===
+with st.expander("🖥️ КОНСОЛЬ / ЛОГИ", expanded=True):
+    col_l1, col_l2, col_l3 = st.columns([1, 2, 2])
+    
+    log_lines = read_bot_logs()
+    log_text = "".join(log_lines)
+
+    with col_l1:
+        if st.button("🔄 Обновить"):
+            st.rerun()
+    with col_l2:
+        # Кнопка СКАЧАТЬ ЛОГ (Работает всегда, даже на HTTP)
+        st.download_button(
+            label="📥 Скачать лог (.txt)",
+            data=log_text,
+            file_name=f"log_{datetime.now().strftime('%H-%M')}.txt",
+            mime="text/plain"
+        )
+    
+    # Текстовое поле в режиме READ-ONLY (писать нельзя, копировать можно)
+    st.text_area(
+        label="Вывод бота:", 
+        value=log_text, 
+        height=300, 
+        disabled=True, # Блокирует ввод текста
+        help="Чтобы скопировать текст, нажмите внутрь поля, затем Ctrl+A и Ctrl+C. Кнопка 'Скачать' сохранит файл."
+    )
+
 tab1, tab2, tab3 = st.tabs(["📊 Дашборд", "⚙️ Чаты", "🛍 Market Watcher"])
 
 with tab1:
     df = load_data()
+    total_processed, total_spam = get_global_stats()
+    
+    session_parsed = 0
+    session_leads = 0
+    
     if not df.empty:
-        total = len(df)
-        leads = len(df[df['role'] == 'LEAD'])
-        spam = len(df[df['role'] == 'SPAM'])
-        
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Всего сообщений", total)
-        m2.metric("🔥 ЛИДЫ", leads)
-        m3.metric("🗑 СПАМ", spam)
-        
-        st.subheader("Лента последних событий")
+        if not pd.api.types.is_datetime64_any_dtype(df['updated_at']):
+            df['updated_at'] = pd.to_datetime(df['updated_at'])
+        mask = df['updated_at'] > st.session_state['session_start']
+        session_parsed = len(df[mask])
+        session_leads = len(df[mask][df[mask]['role'] == 'LEAD'])
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Спаршено (сессия)", session_parsed, help="За текущую сессию")
+    c2.metric("Обработано (всего)", total_processed, help="Всего в базе")
+    c3.metric("🔥 Лиды (сессия)", session_leads, delta=f"+{session_leads}", help="Новые лиды")
+    c4.metric("🗑 Спам (всего)", total_spam, help="Весь спам")
+
+    st.divider()
+    if not df.empty:
+        st.subheader("Лента событий")
         st.dataframe(
             df[['role', 'intent', 'source_chat', 'username', 'last_message', 'updated_at']],
-            use_container_width=True, # Исправлено предупреждение
+            use_container_width=True,
             column_config={
                 "updated_at": st.column_config.DatetimeColumn("Время", format="HH:mm:ss"),
                 "last_message": st.column_config.TextColumn("Текст", width="large")
             }
         )
-    else:
-        st.info("База данных пуста или недоступна.")
+    else: st.info("Нет данных.")
 
 with tab2:
     st.subheader("Управление чатами")
-    
-    with st.expander("➕ Добавить новый чат", expanded=False):
+    with st.expander("➕ Добавить чат"):
         c1, c2, c3 = st.columns([2, 2, 1])
-        with c1:
-            new_link = st.text_input("Ссылка или юзернейм", key="add_link", placeholder="https://t.me/durov")
-        with c2:
-            new_title = st.text_input("Название (необязательно)", key="add_title", placeholder="Мой рабочий чат")
-            new_depth = st.number_input("Глубина поиска", min_value=1, value=500, step=100, key="add_depth")
-        with c3:
-            st.write("") 
-            st.write("") 
-            if st.button("Добавить", type="primary"):
-                if new_link:
-                    if add_new_chat(new_link, new_title, new_depth):
-                        st.success("Чат добавлен!")
-                        time.sleep(0.5)
-                        st.rerun()
-                else:
-                    st.warning("Введите ссылку!")
-    
-    st.divider()
+        new_link = c1.text_input("Ссылка", placeholder="https://t.me/...", help="Прямая ссылка на чат (не на папку!)")
+        new_title = c2.text_input("Название", placeholder="Рабочий чат")
+        new_depth = c2.number_input("Глубина", value=200, step=100)
+        c3.write(""); c3.write("")
+        if c3.button("Добавить", type="primary"):
+            if new_link: 
+                add_new_chat(new_link, new_title, new_depth)
+                st.success("ОК"); time.sleep(0.5); st.rerun()
 
+    st.divider()
     chats_df = load_chats()
     if not chats_df.empty:
         chats_df['delete'] = False
-        
-        edited_df = st.data_editor(
-            chats_df,
-            column_config={
-                "delete": st.column_config.CheckboxColumn("Удалить?", default=False),
-                "is_active": st.column_config.CheckboxColumn("Вкл?"),
-                "chat_link": st.column_config.TextColumn("Ссылка", disabled=True),
-                "chat_title": st.column_config.TextColumn("Название", disabled=False),
-                "progress": st.column_config.ProgressColumn("Прогресс", min_value=0, max_value=100),
-                "depth": st.column_config.NumberColumn("Глубина", min_value=1, step=500),
-            },
-            use_container_width=True, # Исправлено предупреждение
-            hide_index=True,
-            disabled=["status_msg", "chat_link", "progress"]
-        )
-        
-        if st.button("💾 Применить изменения"):
-            if save_changes(edited_df):
-                st.rerun()
-    else:
-        st.warning("Нет чатов в базе.")
+        edited = st.data_editor(chats_df, use_container_width=True, hide_index=True, column_config={"delete": st.column_config.CheckboxColumn("Удалить?"), "chat_link": st.column_config.TextColumn("Ссылка", disabled=True)}, disabled=["status_msg", "chat_link"])
+        if st.button("💾 Сохранить"):
+            save_changes(edited); st.rerun()
+    else: st.warning("Список пуст.")
 
 with tab3:
     st.header("🛍 Market Watcher")
-    
-    st.markdown("### 🚀 Быстрый запуск")
-    
-    # Единое поле ввода
-    target_link = st.text_input(
-        "Вставьте ссылку на товар (Ozon или Wildberries):", 
-        placeholder="https://www.wildberries.ru/catalog/..."
-    )
-
-    st.divider()
-
-    # Кнопка запуска с автоопределением
-    if st.button("🔎 Начать сканирование", type="primary"):
-        if not target_link:
-            st.warning("⚠️ Сначала введите ссылку!")
+    target = st.text_input("Ссылка на товар Ozon/WB")
+    if st.button("🔎 Скан", type="primary"):
+        if not target: st.warning("Нет ссылки!")
         else:
-            # Автоопределение маркетплейса
-            detected_market = None
-            if "wildberries" in target_link.lower() or "wb.ru" in target_link.lower():
-                detected_market = "wb"
-                st.info("✅ Опознано: Wildberries")
-            elif "ozon" in target_link.lower():
-                detected_market = "ozon"
-                st.info("✅ Опознано: Ozon")
-            else:
-                st.error("❌ Не удалось определить маркетплейс по ссылке. Поддерживаются только Ozon и WB.")
-            
-            # Запускаем, только если определили
-            if detected_market:
-                # Формируем команду: передаем ссылку и тип маркета
-                # Предполагаем, что parser_engine.py умеет принимать аргументы --target и --market
-                command = [sys.executable, MARKET_SCRIPT, "--target", target_link, "--market", detected_market]
-                
-                try:
-                    process = subprocess.Popen(
-                        command, 
-                        cwd=MARKET_DIR,
-                        stdout=subprocess.PIPE, 
-                        stderr=subprocess.PIPE,
-                        text=True
-                    )
-                    st.success(f"Процесс запущен в фоне! (PID: {process.pid})")
-                    
-                    # Показываем лог запуска (первые 5 секунд)
-                    with st.spinner("Инициализация браузера..."):
-                        try:
-                            outs, errs = process.communicate(timeout=5)
-                            if outs: st.code(outs)
-                            if errs: st.error(errs)
-                        except subprocess.TimeoutExpired:
-                            st.info("Парсер продолжает работу в фоне. Проверьте результаты позже.")
-                            
-                except Exception as e:
-                    st.error(f"Ошибка запуска процесса: {e}")
+            m = "wb" if "wildberries" in target or "wb.ru" in target else "ozon" if "ozon" in target else None
+            if m:
+                subprocess.Popen([sys.executable, MARKET_SCRIPT, "--target", target, "--market", m], cwd=MARKET_DIR)
+                st.success("Запущено!")
+            else: st.error("Неизвестный маркетплейс")

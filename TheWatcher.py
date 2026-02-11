@@ -18,7 +18,16 @@ from pyrogram import Client
 from pyrogram.errors import FloodWait, UserNotParticipant, ChannelPrivate, PeerIdInvalid, UserAlreadyParticipant
 from openai import OpenAI, BadRequestError 
 
-import config 
+# === ИМПОРТ КОНФИГА ===
+try:
+    import config
+except ImportError:
+    print("❌ ОШИБКА: Не найден файл config.py!")
+    sys.exit(1)
+
+# === НАСТРОЙКА ВЫВОДА (ВАЖНО ДЛЯ DOCKER/TRUENAS) ===
+# Заставляем Python писать логи сразу, не буферизируя
+sys.stdout.reconfigure(encoding='utf-8')
 
 # === ПУТИ ===
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -29,8 +38,9 @@ DEBUG_FILE = os.path.join(BASE_DIR, "debug_log.txt")
 # ============
 
 def log_to_file(text):
+    # Добавляем flush=True, чтобы текст сразу летел в файл/консоль
     msg = f"[{datetime.now().strftime('%H:%M:%S')}] {text}"
-    print(msg) 
+    print(msg, flush=True)
     try:
         with open(DEBUG_FILE, "a", encoding="utf-8") as f:
             f.write(msg + "\n")
@@ -165,24 +175,24 @@ def clean_text_aggressive(text):
 def keyword_fallback(text):
     t = text.lower()
     if "kyc" in t or "wts" in t or "продам" in t or "аккаунт" in t or "документ" in t:
-        return "ЛИД", "Продажа (Fallback)"
+        return "LEAD", "Продажа (Fallback)"
     if "wtb" in t or "куплю" in t or "ищу" in t or "надо" in t:
-        return "ЛИД", "Покупка (Fallback)"
+        return "LEAD", "Покупка (Fallback)"
     if "работа" in t or "вакансия" in t or "требуется" in t or "зарплата" in t:
-        return "СПАМ", "Вакансия (Fallback)"
+        return "SPAM", "Вакансия (Fallback)"
     return "МИМО", "AI_Error_Fallback"
 
 def analyze_with_ai(history):
     if "sk-..." in config.DEEPSEEK_API_KEY or not config.DEEPSEEK_API_KEY: 
-        return "MIMO", "NO KEY"
+        return "МИМО", "NO KEY"
     
-    if not history or not isinstance(history, str): return "MIMO", "Empty"
+    if not history or not isinstance(history, str): return "МИМО", "Empty"
     
     clean_history = clean_text_aggressive(history)[:1200]
     
     text_check = clean_history.lower().strip()
     if len(text_check) < 4 and text_check in ["hi", "hello", "привет", "ку", "hey"]:
-        return "MIMO", "Приветствие"
+        return "МИМО", "Приветствие"
 
     client = OpenAI(api_key=config.DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
     
@@ -255,15 +265,34 @@ def debug_dump_user(u, chat_title, msg_text):
     log_to_file(dump)
 
 def resolve_target(input_str):
+    """
+    Превращает любую ссылку (t.me/user/123, @user, t.me/c/123/456) 
+    в чистый username или chat_id.
+    """
     s = input_str.strip()
-    if s.lstrip("-").isdigit(): return int(s)
-    if "t.me/c/" in s:
-        try:
-            chat_id_part = s.split("t.me/c/")[-1].split("/")[0]
-            return int(f"-100{chat_id_part}")
-        except: pass
-    if "t.me/" in s and "+" not in s: return s.split("t.me/")[-1].strip("/")
-    return s.strip("@")
+    
+    # 1. Убираем мусор в начале (https, t.me)
+    s = s.replace("https://", "").replace("http://", "").replace("t.me/", "")
+    
+    # 2. Если это ссылка на приватный чат (t.me/c/1234567890/55)
+    if s.startswith("c/"):
+        parts = s.split("/")
+        # Берем ID чата (вторая часть) и добавляем префикс -100
+        if len(parts) >= 2 and parts[1].isdigit():
+            return int(f"-100{parts[1]}")
+    
+    # 3. Если это ссылка на пост (username/123), отрезаем номер поста
+    if "/" in s:
+        s = s.split("/")[0]
+
+    # 4. Убираем собачку, если она есть
+    s = s.strip("@")
+
+    # 5. Если осталась только цифра (ID), возвращаем int
+    if s.lstrip("-").isdigit():
+        return int(s)
+        
+    return s
 
 async def process_one_chat(app, chat_data):
     chat_link, last_id, depth, chat_title_db = chat_data
@@ -295,8 +324,8 @@ async def process_one_chat(app, chat_data):
     is_username = chat_link.startswith("@")
     if is_public_link or is_username: db_source_name = chat_link
     
-    # === ИЗМЕНЕНИЕ: УБРАЛИ СПАМ ЛОГ ПРИ ВХОДЕ В ЧАТ ===
-    # log(f"🔎 {db_source_name}") 
+    # === ВЕРНУЛИ ЛОГ: ЧТОБЫ ВИДЕТЬ, ЧТО ПРОЦЕСС ИДЕТ ===
+    log(f"🔎 {db_source_name}: Сканирую {SCAN_LIMIT} последних сообщений...") 
     update_chat_status(chat_link, "Подключение...", 5)
     
     try:
@@ -315,11 +344,10 @@ async def process_one_chat(app, chat_data):
             if STATS["scanned"] % 5 == 0: save_stats()
             
             if scanned_in_chat % 50 == 0: await asyncio.sleep(0.01)
-            if scanned_in_chat % 5 == 0:
-                perc = 5 + int((scanned_in_chat / SCAN_LIMIT) * 80)
-                update_chat_status(chat_link, f"Чтение ({scanned_in_chat})", perc)
             
             if not msg.id: continue
+            # ВАЖНО: Если last_id > 0, мы останавливаемся, когда доходим до старых.
+            # Если это ПЕРВЫЙ запуск, last_id будет 0, и мы скачаем SCAN_LIMIT сообщений.
             if safe_last_id > 0 and msg.id <= safe_last_id: break 
             new_last_id = max(new_last_id, msg.id)
             
@@ -335,8 +363,15 @@ async def process_one_chat(app, chat_data):
 
         save_stats()
         
-        # Счетчик реально обработанных пользователей
         processed_count = 0 
+
+        # === ДОБАВИЛИ ЛОГ: СКОЛЬКО НАШЛИ КАНДИДАТОВ ===
+        if not users_batch:
+            if safe_last_id == 0:
+                log(f"⚠️ {db_source_name}: Сообщений не найдено (или чат пуст/недоступен).")
+            # Если safe_last_id > 0, значит просто нет НОВЫХ, это нормально, не спамим лог.
+        else:
+            log(f"📦 {db_source_name}: Найдено {len(users_batch)} авторов для анализа.")
 
         if users_batch:
             count = len(users_batch)
@@ -399,9 +434,6 @@ async def process_one_chat(app, chat_data):
 
                     nm = f"@{final_username}" if final_username else "NoUsername"
                     
-                    if not final_username:
-                         debug_dump_user(u_final, db_source_name, msgs[0].text or "")
-
                     full_text = " | ".join([str(m.text or m.caption or "") for m in msgs])[:2000]
 
                     role, intent = analyze_with_ai(full_text)
@@ -416,16 +448,15 @@ async def process_one_chat(app, chat_data):
                     is_prem = getattr(u_final, "is_premium", False)
 
                     save_lead_eye(uid, nm, full_name, bio, is_prem, role.strip().upper(), intent.strip(), db_source_name, full_text)
-                    processed_count += 1 # Увеличиваем счетчик успешных обработок
+                    processed_count += 1
                     await asyncio.sleep(0.05)
                 except Exception as e:
                     continue
 
         update_chat_status(chat_link, "✅ Ожидание", 100, new_last_id)
         
-        # === ИЗМЕНЕНИЕ: ЛОГИРУЕМ ТОЛЬКО ЕСЛИ ЧТО-ТО НАШЛИ ===
         if processed_count > 0:
-            log(f"✅ {db_source_name}: Обработано {processed_count} новых диалогов")
+            log(f"✅ {db_source_name}: Сохранено {processed_count} записей в БД")
         
         if 'users_batch' in locals(): del users_batch
         if 'fresh_users_map' in locals(): del fresh_users_map
@@ -437,12 +468,16 @@ async def process_one_chat(app, chat_data):
 
 async def watcher_loop():
     global STATS
-    print("\n--- 🚀 ZGRNK WATCHER (CONFIG MODE) ---")
+    print("\n--- 🚀 ZGRNK WATCHER (SESSION MODE) ---", flush=True)
     
-    if "ЗДЕСЬ_ТВОЯ" in config.SESSION_STRING or len(config.SESSION_STRING) < 50:
-        log_error("ОШИБКА: Нет SESSION_STRING в config.py!"); return
+    # ПРОВЕРКА НАЛИЧИЯ СТРОКИ СЕССИИ (Чтобы не запускалось впустую)
+    if not hasattr(config, 'SESSION_STRING') or len(config.SESSION_STRING) < 50:
+         log_error("ОШИБКА: SESSION_STRING не настроен в config.py!")
+         return
 
     register_process()
+    
+    # ИСПОЛЬЗУЕМ STRING SESSION ИЗ КОНФИГА
     app = Client(
         "memory_session", 
         api_id=config.API_ID, 
@@ -451,26 +486,38 @@ async def watcher_loop():
         in_memory=True
     )
     
-    try: await app.start(); log("✅ Login OK")
-    except Exception as e: log_error(f"LOGIN FAIL: {e}"); cleanup_process(); return
+    try: 
+        await app.start()
+        log("✅ Успешный вход в Telegram!")
+    except Exception as e: 
+        log_error(f"LOGIN FAIL: {e}")
+        cleanup_process()
+        return
 
     try:
+        no_chats_warned = False
         while True:
             if not im_alive_check(): break
             chats = get_chats_to_scan()
             
-            # Если чатов нет, спим и проверяем снова
+            # ЕСЛИ ЧАТОВ НЕТ, ПИШЕМ ОБ ЭТОМ (1 раз) И ЖДЕМ
             if not chats: 
-                await asyncio.sleep(5)
+                if not no_chats_warned:
+                    log("💤 Список чатов пуст. Добавьте каналы через Дашборд...")
+                    no_chats_warned = True
+                await asyncio.sleep(10)
                 continue
+            
+            # Если чаты появились, сбрасываем флаг предупреждения
+            if no_chats_warned: 
+                log(f"🔎 Обнаружено чатов: {len(chats)}. Начинаю работу...")
+                no_chats_warned = False
 
             for chat_data in chats:
                 if not im_alive_check(): break 
                 await process_one_chat(app, chat_data)
-                # Маленькая пауза между чатами, чтобы не спамить запросами
                 await asyncio.sleep(1)
             
-            # Пауза между полными циклами прохода по всем чатам
             await asyncio.sleep(5)
     finally:
         try: await app.stop()
