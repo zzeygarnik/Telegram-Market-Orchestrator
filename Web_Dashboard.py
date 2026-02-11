@@ -263,7 +263,57 @@ with tab2:
 
 with tab3:
     st.header("🛍 Market Watcher")
-    st.info("Здесь будет интерфейс для Wildberries/Ozon.")
-    if st.button("Запустить парсер Маркета"):
-        subprocess.Popen([sys.executable, MARKET_SCRIPT], cwd=MARKET_DIR)
-        st.success("Команда запуска отправлена!")
+    
+    st.markdown("### 🚀 Быстрый запуск")
+    
+    # Единое поле ввода
+    target_link = st.text_input(
+        "Вставьте ссылку на товар (Ozon или Wildberries):", 
+        placeholder="https://www.wildberries.ru/catalog/..."
+    )
+
+    st.divider()
+
+    # Кнопка запуска с автоопределением
+    if st.button("🔎 Начать сканирование", type="primary"):
+        if not target_link:
+            st.warning("⚠️ Сначала введите ссылку!")
+        else:
+            # Автоопределение маркетплейса
+            detected_market = None
+            if "wildberries" in target_link.lower() or "wb.ru" in target_link.lower():
+                detected_market = "wb"
+                st.info("✅ Опознано: Wildberries")
+            elif "ozon" in target_link.lower():
+                detected_market = "ozon"
+                st.info("✅ Опознано: Ozon")
+            else:
+                st.error("❌ Не удалось определить маркетплейс по ссылке. Поддерживаются только Ozon и WB.")
+            
+            # Запускаем, только если определили
+            if detected_market:
+                # Формируем команду: передаем ссылку и тип маркета
+                # Предполагаем, что parser_engine.py умеет принимать аргументы --target и --market
+                command = [sys.executable, MARKET_SCRIPT, "--target", target_link, "--market", detected_market]
+                
+                try:
+                    process = subprocess.Popen(
+                        command, 
+                        cwd=MARKET_DIR,
+                        stdout=subprocess.PIPE, 
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    st.success(f"Процесс запущен в фоне! (PID: {process.pid})")
+                    
+                    # Показываем лог запуска (первые 5 секунд)
+                    with st.spinner("Инициализация браузера..."):
+                        try:
+                            outs, errs = process.communicate(timeout=5)
+                            if outs: st.code(outs)
+                            if errs: st.error(errs)
+                        except subprocess.TimeoutExpired:
+                            st.info("Парсер продолжает работу в фоне. Проверьте результаты позже.")
+                            
+                except Exception as e:
+                    st.error(f"Ошибка запуска процесса: {e}")

@@ -18,9 +18,7 @@ from pyrogram import Client
 from pyrogram.errors import FloodWait, UserNotParticipant, ChannelPrivate, PeerIdInvalid, UserAlreadyParticipant
 from openai import OpenAI, BadRequestError 
 
-# === ПОДКЛЮЧАЕМ КОНФИГ ===
 import config 
-# =========================
 
 # === ПУТИ ===
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -96,7 +94,6 @@ signal.signal(signal.SIGINT, lambda s,f: (cleanup_process(), sys.exit(0)))
 signal.signal(signal.SIGTERM, lambda s,f: (cleanup_process(), sys.exit(0)))
 
 def get_db_connection():
-    # БЕРЕМ ДАННЫЕ ИЗ CONFIG.PY
     conn = psycopg2.connect(
         host=config.DB_HOST,
         database=config.DB_NAME,
@@ -176,7 +173,6 @@ def keyword_fallback(text):
     return "МИМО", "AI_Error_Fallback"
 
 def analyze_with_ai(history):
-    # БЕРЕМ КЛЮЧ ИЗ CONFIG
     if "sk-..." in config.DEEPSEEK_API_KEY or not config.DEEPSEEK_API_KEY: 
         return "MIMO", "NO KEY"
     
@@ -188,28 +184,22 @@ def analyze_with_ai(history):
     if len(text_check) < 4 and text_check in ["hi", "hello", "привет", "ку", "hey"]:
         return "MIMO", "Приветствие"
 
-    # ИСПОЛЬЗУЕМ КЛЮЧ ИЗ CONFIG
     client = OpenAI(api_key=config.DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
     
     system_prompt = """
 Ты — классификатор сообщений Telegram.
 ОТВЕЧАЙ СТРОГО В ФОРМАТЕ: РОЛЬ | ОПИСАНИЕ
-
 СПИСОК РОЛЕЙ (ИСПОЛЬЗУЙ ТОЛЬКО ИХ):
-- LEAD (если хотят купить, продать, ищут услугу, WTB, WTS)
-- SPAM (если реклама канала, вакансия, скам)
-- EXPERT (если дают технический совет)
-- MIMO (если флуд, приветствия, мусор)
-
-Пример:
-LEAD | Хочет купить аккаунт
-SPAM | Реклама казино
+- ЛИД (если хотят купить, продать, ищут услугу, WTB, WTS)
+- СПАМ (если реклама канала, вакансия, скам)
+- ЭКСПЕРТ (если дают технический совет)
+- МИМО (если флуд, приветствия, мусор)
 """
     max_retries = 2
     for attempt in range(max_retries):
         try:
             resp = client.chat.completions.create(
-                model=config.MODEL_NAME, # МОДЕЛЬ ИЗ CONFIG
+                model=config.MODEL_NAME, 
                 messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": f"Txt:\n{clean_history}"}],
                 temperature=0.0, stream=False, timeout=15 
             )
@@ -246,7 +236,7 @@ SPAM | Реклама казино
                 return keyword_fallback(history)
             time.sleep(1)
             
-    return "MIMO", "AI:Unknown"
+    return "МИМО", "AI:Unknown"
 
 def extract_best_username(user_obj):
     if not user_obj: return None
@@ -305,7 +295,8 @@ async def process_one_chat(app, chat_data):
     is_username = chat_link.startswith("@")
     if is_public_link or is_username: db_source_name = chat_link
     
-    log(f"🔎 {db_source_name}")
+    # === ИЗМЕНЕНИЕ: УБРАЛИ СПАМ ЛОГ ПРИ ВХОДЕ В ЧАТ ===
+    # log(f"🔎 {db_source_name}") 
     update_chat_status(chat_link, "Подключение...", 5)
     
     try:
@@ -344,6 +335,9 @@ async def process_one_chat(app, chat_data):
 
         save_stats()
         
+        # Счетчик реально обработанных пользователей
+        processed_count = 0 
+
         if users_batch:
             count = len(users_batch)
             update_chat_status(chat_link, f"Обновление ({count})...", 90)
@@ -422,30 +416,33 @@ async def process_one_chat(app, chat_data):
                     is_prem = getattr(u_final, "is_premium", False)
 
                     save_lead_eye(uid, nm, full_name, bio, is_prem, role.strip().upper(), intent.strip(), db_source_name, full_text)
+                    processed_count += 1 # Увеличиваем счетчик успешных обработок
                     await asyncio.sleep(0.05)
                 except Exception as e:
                     continue
 
         update_chat_status(chat_link, "✅ Ожидание", 100, new_last_id)
         
+        # === ИЗМЕНЕНИЕ: ЛОГИРУЕМ ТОЛЬКО ЕСЛИ ЧТО-ТО НАШЛИ ===
+        if processed_count > 0:
+            log(f"✅ {db_source_name}: Обработано {processed_count} новых диалогов")
+        
         if 'users_batch' in locals(): del users_batch
         if 'fresh_users_map' in locals(): del fresh_users_map
     
     except Exception as e:
         update_chat_status(chat_link, "❌ Ошибка", 0)
-        log_error(f"CRITICAL: {e}")
+        log_error(f"CRITICAL in {db_source_name}: {e}")
         traceback.print_exc()
 
 async def watcher_loop():
     global STATS
     print("\n--- 🚀 ZGRNK WATCHER (CONFIG MODE) ---")
     
-    # ПРОВЕРЯЕМ СЕССИЮ ИЗ КОНФИГА
     if "ЗДЕСЬ_ТВОЯ" in config.SESSION_STRING or len(config.SESSION_STRING) < 50:
         log_error("ОШИБКА: Нет SESSION_STRING в config.py!"); return
 
     register_process()
-    # ИНИЦИАЛИЗАЦИЯ КЛИЕНТА С ДАННЫМИ ИЗ КОНФИГА
     app = Client(
         "memory_session", 
         api_id=config.API_ID, 
@@ -461,12 +458,19 @@ async def watcher_loop():
         while True:
             if not im_alive_check(): break
             chats = get_chats_to_scan()
-            if not chats: await asyncio.sleep(5); continue
+            
+            # Если чатов нет, спим и проверяем снова
+            if not chats: 
+                await asyncio.sleep(5)
+                continue
 
             for chat_data in chats:
                 if not im_alive_check(): break 
                 await process_one_chat(app, chat_data)
+                # Маленькая пауза между чатами, чтобы не спамить запросами
                 await asyncio.sleep(1)
+            
+            # Пауза между полными циклами прохода по всем чатам
             await asyncio.sleep(5)
     finally:
         try: await app.stop()

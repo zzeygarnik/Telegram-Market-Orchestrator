@@ -1,19 +1,23 @@
-# Используем официальный образ Playwright (в нем есть Python и браузеры)
-FROM mcr.microsoft.com/playwright/python:v1.41.0-jammy
+# Используем версию образа, которая соответствует версии библиотеки (1.58.0)
+FROM mcr.microsoft.com/playwright/python:v1.58.0-jammy
 
+# Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Копируем зависимости
+# Сначала копируем зависимости (для кэширования слоев Docker)
 COPY requirements.txt .
 
-# Ставим питоновские либы
+# Устанавливаем библиотеки
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Устанавливаем браузеры Playwright (на всякий случай)
-RUN playwright install chromium
-
-# Копируем весь проект
+# Копируем весь код проекта
 COPY . .
 
-# Запускаем дашборд (или ваш скрипт входа)
-CMD ["streamlit", "run", "Web_Dashboard.py", "--server.port=8501", "--server.address=0.0.0.0"]
+# ВАЖНО: Добавляем корневую папку в пути Python, чтобы imports работали везде
+ENV PYTHONPATH="${PYTHONPATH}:/app"
+
+# Открываем порт для Streamlit
+EXPOSE 8501
+
+# Команда запуска
+CMD ["bash", "run.sh"]

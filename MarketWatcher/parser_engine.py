@@ -4,14 +4,26 @@ import random
 import sys
 import json
 import re
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-import config
+import argparse # Добавили для работы с аргументами
 from datetime import datetime
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# ===================================
+
+import config
+
 # Импорты
-from db_async import AsyncMarketDB
-from market_ai import analyze_review
+try:
+    from db_async import AsyncMarketDB
+    from market_ai import analyze_review
+except ImportError:
+    # Заглушки, если файлы не найдены (чтобы скрипт не падал сразу)
+    print("⚠️ Warning: db_async or market_ai not found. Running in limited mode.")
+    AsyncMarketDB = None
+    analyze_review = lambda x: ("MIMO", 0.0, "No AI")
+
 from playwright.async_api import async_playwright
+
 # Импортируем маскировку
 try:
     from playwright_stealth import stealth_async
@@ -34,7 +46,7 @@ def get_random_ua():
 
 class MarketParser:
     def __init__(self):
-        self.db = AsyncMarketDB()
+        self.db = AsyncMarketDB() if AsyncMarketDB else None
 
     def _get_basket_host(self, vol: int) -> str:
         if 0 <= vol <= 143: return "basket-01.wbbasket.ru"
@@ -101,23 +113,16 @@ class MarketParser:
         """Попытка №2: Stealth Browser"""
         print(f"   ⚓ Включаем Stealth HTML-парсинг...")
         try:
-            # Применяем маскировку, если установлена
             if stealth_async:
                 await stealth_async(page)
             
-            # Переходим на страницу
             await page.goto(url, wait_until='domcontentloaded', timeout=45000)
             
-            # Ждем появления цены (важно для JS сайтов)
             try:
-                # Ждем любой индикатор цены до 5 секунд
                 await page.wait_for_selector('.price-block__final-price, .mo-typography_color_danger', timeout=5000)
-            except:
-                pass 
+            except: pass 
 
-            # --- ПАРСИНГ ЦЕНЫ ---
             price = 0
-            # Ваш селектор первый в списке
             price_selectors = [
                 '.mo-typography_variant_title2.mo-typography_color_danger', 
                 '.price-block__final-price', 
@@ -127,7 +132,6 @@ class MarketParser:
             
             for sel in price_selectors:
                 try:
-                    # Ищем все совпадения, берем первое видимое
                     elements = await page.locator(sel).all()
                     for el in elements:
                         if await el.is_visible():
@@ -140,12 +144,10 @@ class MarketParser:
                     if price > 0: break
                 except: pass
 
-            # --- ОТЛАДКА ---
             if price == 0:
                 print("   📸 Цена не найдена. Делаю скриншот (debug_fail.png)...")
                 await page.screenshot(path=os.path.join(BASE_DIR, "debug_fail.png"))
 
-            # --- РЕЙТИНГ ---
             rating = 0.0
             rating_selectors = ['.product-review__rating', '.address-rate-mini', '.user-scores__score']
             for sel in rating_selectors:
@@ -197,12 +199,14 @@ class MarketParser:
         if not text_reviews: return 0, calc_rating
 
         print(f"   🧠 Анализ {len(text_reviews)} отзывов...")
+        if not self.db: return 0, calc_rating
+        
         existing_ids = await self.db.get_existing_reviews_ids(item_id)
         new_batch = []
         
         for fb in text_reviews:
             r_id = str(fb.get('id'))
-            if r_id in existing_ids: continue # Дубликаты пропускаем
+            if r_id in existing_ids: continue 
 
             val = int(fb.get('valuation', 0))
             r_text = fb.get('text', '')
@@ -231,22 +235,11 @@ class MarketParser:
         print(f"\n🔎 [{platform}] Парсинг SKU: {sku}...")
 
         async with async_playwright() as p:
-            # ЗАПУСК С МАСКИРОВКОЙ
-            # Args для отключения автоматизации, скрытия инфобаров и запуска в Docker
             browser = await p.chromium.launch(
                 headless=True, 
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage"
-                ]
+                args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"]
             )
-            # Контекст с "живым" User-Agent
-            ctx = await browser.new_context(
-                user_agent=get_random_ua(),
-                viewport={'width': 1920, 'height': 1080},
-                locale='ru-RU'
-            )
+            ctx = await browser.new_context(user_agent=get_random_ua(), viewport={'width': 1920, 'height': 1080}, locale='ru-RU')
             page = await ctx.new_page()
             
             if platform == "WB":
@@ -267,40 +260,90 @@ class MarketParser:
 
                 # Итог
                 if data['found']:
-                    item_id = await self.db.add_item_to_watch(platform, sku, data['name'])
-                    if item_id:
-                        reviews_list = []
-                        if data.get('root_id'):
-                            reviews_list = await self._download_reviews(data['root_id'], scan_limit, ctx.request)
-                        
-                        saved_cnt, calc_rating = await self._process_and_save(item_id, reviews_list)
-                        final_rating = data['rating'] if data['rating'] > 0 else calc_rating
-                        
-                        await self.db.save_daily_stats(item_id, data['price'], final_rating, saved_cnt)
-                        print(f"   🏁 Итог: Цена {data['price']} ₽, Рейтинг {final_rating}")
+                    print(f"   ✅ НАЙДЕНО: {data['name']} | {data['price']} ₽")
+                    if self.db:
+                        item_id = await self.db.add_item_to_watch(platform, sku, data['name'])
+                        if item_id:
+                            reviews_list = []
+                            if data.get('root_id'):
+                                reviews_list = await self._download_reviews(data['root_id'], scan_limit, ctx.request)
+                            
+                            saved_cnt, calc_rating = await self._process_and_save(item_id, reviews_list)
+                            final_rating = data['rating'] if data['rating'] > 0 else calc_rating
+                            
+                            await self.db.save_daily_stats(item_id, data['price'], final_rating, saved_cnt)
+                            print(f"   🏁 Сохранено в БД: Цена {data['price']} ₽, Рейтинг {final_rating}")
                 else:
                     print("   ❌ Не удалось распарсить товар.")
+            
+            elif platform == "OZON":
+                 print("   ℹ️ Логика для OZON пока не реализована в полной мере (нужен Stealth + API bypass).")
+                 # ТУТ МОЖНО БУДЕТ ДОБАВИТЬ ЛОГИКУ ДЛЯ ОЗОНА ПОЗЖЕ
 
             await browser.close()
 
+# === ФУНКЦИЯ ДЛЯ ИЗВЛЕЧЕНИЯ SKU ИЗ ССЫЛКИ ===
+def extract_sku(input_str):
+    # Пытаемся найти цифры, если это ссылка
+    match = re.search(r'catalog/(\d+)', input_str) # Для WB
+    if match: return match.group(1)
+    
+    match_oz = re.search(r'product/.*-(\d+)', input_str) # Для Ozon
+    if match_oz: return match_oz.group(1)
+
+    # Если просто цифры
+    if input_str.isdigit(): return input_str
+    
+    return input_str # Возвращаем как есть, если не поняли
+
 async def main():
     print("--- 🚀 MARKET WATCHER V2.4 (Stealth Docker) ---")
+    
+    # 1. ПАРСИНГ АРГУМЕНТОВ ОТ ДАШБОРДА
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--target', type=str, help='Ссылка на товар или SKU')
+    parser.add_argument('--market', type=str, help='WB или OZON')
+    args, unknown = parser.parse_known_args() # Чтобы не падал от лишних аргументов
+
     with open(PID_FILE, 'w') as f: f.write(str(os.getpid()))
-    parser = MarketParser()
-    await parser.db.connect()
+    
+    market_parser = MarketParser()
+    if market_parser.db: await market_parser.db.connect()
+    
     try:
-        items = await parser.db.get_active_items()
-        if items:
-            print(f"📋 Задач: {len(items)}")
-            for row in items:
-                try:
-                    url = f"https://www.wildberries.ru/catalog/{row['sku']}/detail.aspx" if row['platform'] == "WB" else ""
-                    if url:
-                        await parser.parse_item(row['platform'], row['sku'], url, row.get('scan_limit', 20), row.get('parse_all', False))
-                        await asyncio.sleep(3)
-                except Exception as e: print(f"Err: {e}")
+        # РЕЖИМ 1: ЗАПУСК ИЗ ДАШБОРДА (ОДИН ТОВАР)
+        if args.target:
+            sku = extract_sku(args.target)
+            platform = "WB"
+            if args.market and "ozon" in args.market.lower(): platform = "OZON"
+            elif "ozon" in args.target.lower(): platform = "OZON"
+            
+            url = args.target if "http" in args.target else f"https://www.wildberries.ru/catalog/{sku}/detail.aspx"
+            
+            print(f"🎯 Режим одиночного сканирования: {platform} | SKU: {sku}")
+            await market_parser.parse_item(platform, sku, url, scan_limit=50, parse_all=True)
+
+        # РЕЖИМ 2: РАБОТА ПО РАСПИСАНИЮ (ИЗ БАЗЫ)
+        else:
+            if not market_parser.db:
+                print("❌ Нет подключения к БД и нет цели для сканирования.")
+                return
+
+            items = await market_parser.db.get_active_items()
+            if items:
+                print(f"📋 Задач в базе: {len(items)}")
+                for row in items:
+                    try:
+                        url = f"https://www.wildberries.ru/catalog/{row['sku']}/detail.aspx" if row['platform'] == "WB" else ""
+                        if url:
+                            await market_parser.parse_item(row['platform'], row['sku'], url, row.get('scan_limit', 20), row.get('parse_all', False))
+                            await asyncio.sleep(3)
+                    except Exception as e: print(f"Err: {e}")
+            else:
+                print("📭 База пуста.")
+
     finally:
-        await parser.db.close()
+        if market_parser.db: await market_parser.db.close()
         if os.path.exists(PID_FILE): os.remove(PID_FILE)
 
 if __name__ == "__main__":

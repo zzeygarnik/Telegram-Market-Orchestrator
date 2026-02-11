@@ -1,9 +1,8 @@
 pyrogram
 tgcrypto
-openai
-streamlit
-pandas
-watchdog
 psycopg2-binary
-playwright
+pandas
+streamlit
+openai
+playwright==1.58.0
 playwright-stealth
