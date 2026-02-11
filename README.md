@@ -33,15 +33,9 @@ The system consists of three main components that interact via a PostgreSQL data
     * Observability: Displays real-time logs and system status.
     * CRUD Operations: Manage the monitored chat list directly from the interface.
 
-📂 Project Structure
-Telegram-Market-Orchestrator/
-├── 📂 MarketWatcher/       # Marketplace parsing logic
-├── 📄 Dockerfile           # Container configuration
-├── 📄 TheWatcher.py        # Core Telegram monitoring script
-├── 📄 Web_Dashboard.py     # Streamlit interface
-├── 📄 requirements.txt     # Python dependencies
-├── 📄 run.sh               # Entrypoint script
-└── 📄 .gitignore           # Git configuration
+
+![Снимок экрана 2026-02-11 060606](https://github.com/user-attachments/assets/304346e5-0d09-42a1-8e65-8130ecc4bd14)
+
 
 💾 Database Structure
 The project uses PostgreSQL for persistent storage:
@@ -57,10 +51,15 @@ cd Telegram-Market-Orchestrator
 
 You must create a config.py file in the root directory with the following structure:
 # config.py
+
 DB_HOST = "your_postgres_host"
+
 DB_NAME = "your_db_name"
+
 DB_USER = "your_db_user"
+
 DB_PASS = "your_db_password"
+
 DB_PORT = "5432"
 
 API_ID = 123456  # Telegram API ID
@@ -118,12 +117,17 @@ cd Telegram-Market-Orchestrator
 Создайте файл config.py в корневой директории проекта:
 # config.py
 DB_HOST = "your_postgres_host"
+
 DB_NAME = "your_db_name"
+
 DB_USER = "your_db_user"
+
 DB_PASS = "your_db_password"
+
 DB_PORT = "5432"
 
 API_ID = 123456  # Telegram API ID
+
 API_HASH = "your_telegram_api_hash"
 
 3. Развертывание в Docker
