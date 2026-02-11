@@ -46,24 +46,53 @@ The project uses PostgreSQL for persistent storage:
 1. Clone the repository:
 git clone [https://github.com/zzeygarnik/Telegram-Market-Orchestrator.git](https://github.com/zzeygarnik/Telegram-Market-Orchestrator.git)
 cd Telegram-Market-Orchestrator
+
 2. Configuration
-⚠️ Important: Configuration files are excluded from the repository for security reasons.
+⚠️ **Important:** Configuration files and session cookies are excluded from the repository for security reasons.
 
-You must create a config.py file in the root directory with the following structure:
+**Step A: Create `config.py`**
+Create a file named `config.py` in the root directory:
+
+```python
 # config.py
-
 DB_HOST = "your_postgres_host"
-
 DB_NAME = "your_db_name"
-
 DB_USER = "your_db_user"
-
 DB_PASS = "your_db_password"
-
 DB_PORT = "5432"
 
-API_ID = 123456  # Telegram API ID
-API_HASH = "your_telegram_api_hash"
+API_ID = 123456          # From my.telegram.org
+API_HASH = "your_hash"   # From my.telegram.org
+SESSION_STRING = "..."   # Pyrogram session string (generated via helper script)
+DEEPSEEK_API_KEY = "..." # (Optional) For AI Analysis
+
+**Step B: Marketplace Cookies (Required for Parsing) To bypass captchas and login screens on Ozon/Wildberries, you must provide valid session cookies.**
+
+   1. Log in to the marketplace in your browser.
+
+   2. Use an extension like EditThisCookie to export cookies as JSON.
+
+   3. Save them in the root directory as:
+      ozon_cookies.json
+      wb_cookies.json
+
+
+**2. Обнови раздел "Docker Deployment" (добавили проброс куков):**
+
+```markdown
+3. Docker Deployment
+The project includes a Dockerfile for building the image.
+
+# Build the image
+docker build -t orchestrator-app .
+
+# Run the container
+# We mount config.py AND cookie files to persist sessions
+docker run -d -p 8501:8501 \
+  -v $(pwd)/config.py:/app/config.py \
+  -v $(pwd)/ozon_cookies.json:/app/ozon_cookies.json \
+  -v $(pwd)/wb_cookies.json:/app/wb_cookies.json \
+  orchestrator-app
 
 3. Docker Deployment
 The project includes a Dockerfile for building the image.
@@ -111,25 +140,52 @@ leads: Отфильтрованные сообщения с метаданным
 1. Клонирование репозитория
 git clone [https://github.com/zzeygarnik/Telegram-Market-Orchestrator.git](https://github.com/zzeygarnik/Telegram-Market-Orchestrator.git)
 cd Telegram-Market-Orchestrator
-2. Конфигурация
-⚠️ Важно: Файлы конфигурации исключены из репозитория в целях безопасности.
 
-Создайте файл config.py в корневой директории проекта:
+2. Конфигурация
+⚠️ **Важно:** Файлы конфигурации и куки сессий исключены из репозитория в целях безопасности.
+
+**Шаг А: Создание `config.py`**
+Создайте файл `config.py` в корне проекта:
+
+```python
 # config.py
 DB_HOST = "your_postgres_host"
-
 DB_NAME = "your_db_name"
-
 DB_USER = "your_db_user"
-
 DB_PASS = "your_db_password"
-
 DB_PORT = "5432"
 
-API_ID = 123456  # Telegram API ID
+API_ID = 123456          # Получить на my.telegram.org
+API_HASH = "your_hash"   # Получить на my.telegram.org
+SESSION_STRING = "..."   # Строка сессии Pyrogram (генерируется скриптом)
+DEEPSEEK_API_KEY = "..." # (Опционально) Для AI-анализа
 
-API_HASH = "your_telegram_api_hash"
+Шаг Б: Куки для Маркетплейсов Для обхода капчи и авторизации на Ozon/Wildberries необходимы актуальные куки.
+   1. Авторизуйтесь на маркетплейсе в браузере.
 
+   2. Используйте расширение (например, EditThisCookie) для экспорта куков в JSON.
+
+   3. Сохраните файлы в корне проекта под именами:
+      ozon_cookies.json
+      wb_cookies.json
+
+
+**2. Обнови раздел "Развертывание в Docker":**
+
+```markdown
+3. Развертывание в Docker
+Проект готов к сборке через Dockerfile.
+
+# Сборка образа
+docker build -t orchestrator-app .
+
+# Запуск контейнера
+# Пробрасываем конфиг И файлы куков внутрь контейнера
+docker run -d -p 8501:8501 \
+  -v $(pwd)/config.py:/app/config.py \
+  -v $(pwd)/ozon_cookies.json:/app/ozon_cookies.json \
+  -v $(pwd)/wb_cookies.json:/app/wb_cookies.json \
+  orchestrator-app
 3. Развертывание в Docker
 Проект готов к сборке через Dockerfile.
 # Сборка образа
