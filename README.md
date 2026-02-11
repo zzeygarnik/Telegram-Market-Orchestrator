@@ -74,34 +74,34 @@ docker build -t orchestrator-app .
 # Run the container (ensure config.py is mounted correctly)
 docker run -d -p 8501:8501 -v $(pwd)/config.py:/app/config.py orchestrator-app
 
-🖥 Usage
-Access the dashboard via your browser at http://localhost:8501 (or your server IP).
-Dashboard Tab: View statistics on collected leads and recent activity.
-Chats Tab: Add new Telegram channels/groups. Supports standard links (t.me/...) and usernames (@name).
-Logs: Monitor backend process output directly from the web interface.
+🖥 Usage:
+   Access the dashboard via your browser at http://localhost:8501 (or your server IP).
+   Dashboard Tab: View statistics on collected leads and recent activity.
+   Chats Tab: Add new Telegram channels/groups. Supports standard links (t.me/...) and usernames (@name).
+   Logs: Monitor backend process output directly from the web interface.
 
 
 
 
 🇷🇺 Русская версия
-🏗 Архитектура системы
-Проект представляет собой оркестратор из трех компонентов, взаимодействующих через базу данных PostgreSQL:
+   🏗 Архитектура системы
+   Проект представляет собой оркестратор из трех компонентов, взаимодействующих через базу данных PostgreSQL:
 
 👁️ The Watcher (Парсер Telegram)
-Написан на Pyrogram (MTProto).
-Поддерживает мониторинг в реальном времени и глубокий парсинг истории.
-Автоматическая обработка ограничений Telegram (FloodWait).
-Фильтрация сообщений (Лиды vs Спам) и сохранение результатов в БД.
+   Написан на Pyrogram (MTProto).
+   Поддерживает мониторинг в реальном времени и глубокий парсинг истории.
+   Автоматическая обработка ограничений Telegram (FloodWait).
+   Фильтрация сообщений (Лиды vs Спам) и сохранение результатов в БД.
 
 🛍️ Market Watcher
-Использует Playwright (Async) и Python.
-Headless-автоматизация браузера для сбора цен и остатков товаров с маркетплейсов.
+   Использует Playwright (Async) и Python.
+   Headless-автоматизация браузера для сбора цен и остатков товаров с маркетплейсов.
 
 📊 Web Dashboard (Панель управления)
-Реализована на Streamlit.
-Управление процессами: Запуск/остановка фоновых задач (PID менеджмент).
-Логи: Просмотр статуса и вывода консоли в реальном времени.
-Управление чатами: Добавление и настройка отслеживаемых каналов через GUI.
+   Реализована на Streamlit.
+   Управление процессами: Запуск/остановка фоновых задач (PID менеджмент).
+   Логи: просмотр статуса и вывода консоли в реальном времени.
+   Управление чатами: Добавление и настройка отслеживаемых каналов через GUI.
 
 💾 Структура Базы Данных
 monitored_chats: Ссылки на целевые чаты, настройки глубины парсинга, статус активности.
@@ -135,14 +135,14 @@ API_HASH = "your_telegram_api_hash"
 # Сборка образа
 docker build -t orchestrator-app .
 
-# Запуск контейнера (убедитесь, что config.py примонтирован)
+# Запуск контейнера (убедитесь, что config.py актуализирован)
 docker run -d -p 8501:8501 -v $(pwd)/config.py:/app/config.py orchestrator-app
 
 🖥 Использование
-Дашборд доступен по адресу http://localhost:8501 (или IP вашего сервера).
-Вкладка Dashboard: Статистика по лидам и лента событий.
-Вкладка Чаты: Добавление каналов для мониторинга. Поддерживаются ссылки (t.me/...) и юзернеймы (@name).
-Логи: Просмотр логов бота прямо в интерфейсе.
+   Дашборд доступен по адресу http://localhost:8501 (или IP вашего сервера).
+   Вкладка Dashboard: Статистика по лидам и лента событий.
+   Вкладка Чаты: Добавление каналов для мониторинга. Поддерживаются ссылки (t.me/...) и юзернеймы (@name).
+   Логи: Просмотр логов бота прямо в интерфейсе.
 
 Tech Stack
 Python 3.10+ Pyrogram Streamlit Pandas Psycopg2 Playwright Docker TrueNAS Scale
