@@ -1,28 +1,19 @@
-# Конфиги и секреты (САМОЕ ВАЖНОЕ)
-config.py
-*.session
-*.session-journal
-
-# Логи и базы данных
-*.log
-*.db
-leads.db
-watcher.pid
-session_stats.json
-crash_log.txt
-
-# Системные файлы Python
-pycache/
-*.py[cod]
-venv/
+# Секреты и сессии
 .env
+**/*_cookies.json
+**/*.session
+**/*.session-journal
 
-# Mac/Windows мусор
-.DS_Store
-Thumbs.dbdebug_log.txt
-<<<<<<< HEAD
-=======
-*.json
-debug_screens/
-debug_log.txt
->>>>>>> c285623 (Initial commit: Clean and Secure structure)
+# Лишние скрипты и логи
+fix_db.py
+init_db.py
+**/init_db.py
+*.log
+**/debug_fail.png
+
+# Файлы процессов
+*.pid
+**/*.pid
+
+# Кэш
+__pycache__/
