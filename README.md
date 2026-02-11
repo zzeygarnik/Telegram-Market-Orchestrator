@@ -48,9 +48,9 @@ git clone [https://github.com/zzeygarnik/Telegram-Market-Orchestrator.git](https
 cd Telegram-Market-Orchestrator
 
 2. Configuration
-⚠️ **Important:** Configuration files and session cookies are excluded from the repository for security reasons.
+⚠️ Important: Configuration files and session cookies are excluded from the repository for security reasons.
 
-**Step A: Create `config.py`**
+Step A: Create `config.py`
 Create a file named `config.py` in the root directory:
 
 ```python
@@ -66,7 +66,7 @@ API_HASH = "your_hash"   # From my.telegram.org
 SESSION_STRING = "..."   # Pyrogram session string (generated via helper script)
 DEEPSEEK_API_KEY = "..." # (Optional) For AI Analysis
 
-**Step B: Marketplace Cookies (Required for Parsing) To bypass captchas and login screens on Ozon/Wildberries, you must provide valid session cookies.**
+Step B: Marketplace Cookies (Required for Parsing) To bypass captchas and login screens on Ozon/Wildberries, you must provide valid session cookies.
 
    1. Log in to the marketplace in your browser.
 
@@ -77,7 +77,7 @@ DEEPSEEK_API_KEY = "..." # (Optional) For AI Analysis
       wb_cookies.json
 
 
-**2. Обнови раздел "Docker Deployment" (добавили проброс куков):**
+2. Обнови раздел "Docker Deployment" (добавили проброс куков):
 
 ```markdown
 3. Docker Deployment
@@ -170,7 +170,7 @@ DEEPSEEK_API_KEY = "..." # (Опционально) Для AI-анализа
       wb_cookies.json
 
 
-**2. Обнови раздел "Развертывание в Docker":**
+2. Обнови раздел "Развертывание в Docker":
 
 ```markdown
 3. Развертывание в Docker
