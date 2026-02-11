@@ -75,10 +75,10 @@ docker build -t orchestrator-app .
 docker run -d -p 8501:8501 -v $(pwd)/config.py:/app/config.py orchestrator-app
 
 🖥 Usage:
-   Access the dashboard via your browser at http://localhost:8501 (or your server IP).
-   Dashboard Tab: View statistics on collected leads and recent activity.
-   Chats Tab: Add new Telegram channels/groups. Supports standard links (t.me/...) and usernames (@name).
-   Logs: Monitor backend process output directly from the web interface.
+   access the dashboard via your browser at http://localhost:8501 (or your server IP).
+   dashboard Tab: View statistics on collected leads and recent activity.
+   chats Tab: Add new Telegram channels/groups. Supports standard links (t.me/...) and usernames (@name).
+   logs: Monitor backend process output directly from the web interface.
 
 
 
