@@ -5,8 +5,8 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-336791?logo=postgresql&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Frontend-Streamlit-FF4B4B?logo=streamlit&logoColor=white)
 
-**Automated system for monitoring Telegram chats and analyzing marketplace data (Wildberries/Ozon).**
-*Containerized deployment ready for TrueNAS Scale.*
+Automated system for monitoring Telegram chats and analyzing marketplace data (Wildberries/Ozon).
+Containerized deployment ready for TrueNAS Scale.
 
 [ 🇬🇧 English Version ](#-english-version) | [ 🇷🇺 Русская версия ](#-русская-версия)
 
@@ -29,7 +29,7 @@ The system consists of three main components that interact via a PostgreSQL data
 
 3.  📊 Web Dashboard (Control Center)
     * Built with `Streamlit`.
-    * Process Management:** Start/stop background processes via GUI (PID management).
+    * Process Management: Start/stop background processes via GUI (PID management).
     * Observability: Displays real-time logs and system status.
     * CRUD Operations: Manage the monitored chat list directly from the interface.
 
