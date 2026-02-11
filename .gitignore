@@ -19,4 +19,4 @@ venv/
 
 # Mac/Windows мусор
 .DS_Store
-Thumbs.db
+Thumbs.dbdebug_log.txt
