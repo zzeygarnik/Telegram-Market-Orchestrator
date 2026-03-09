@@ -48,7 +48,8 @@ Telegram-Market-Orchestrator/
 ├── watcher.py              # Telegram parser + AI lead classifier
 ├── dashboard.py            # Streamlit control panel
 ├── db_async.py             # Async PostgreSQL wrapper (asyncpg)
-├── config.py               # ⚠️ Secret config (not in repo — see below)
+├── config.py               # Reads settings from .env via python-dotenv
+├── .env                    # ⚠️ Your secrets (not in repo — see below)
 ├── requirements.txt
 ├── Dockerfile
 ├── run.sh                  # Shell entrypoint
@@ -78,23 +79,24 @@ Telegram-Market-Orchestrator/
 
 ### ⚙️ Configuration
 
-**Step 1 — Create `config.py`** in the project root:
+**Step 1 — Create a `.env` file** in the project root:
+```env
+DB_HOST=your_postgres_host
+DB_PORT=5432
+DB_NAME=postgres
+DB_USER=postgres
+DB_PASS=your_password
 
-```python
-# config.py
-DB_HOST = "your_postgres_host"
-DB_NAME = "your_db_name"
-DB_USER = "your_db_user"
-DB_PASS = "your_db_password"
-DB_PORT = "5432"
+API_ID=123456
+API_HASH=your_hash
+SESSION_STRING=...
 
-API_ID = 123456           # From https://my.telegram.org
-API_HASH = "your_hash"    # From https://my.telegram.org
-SESSION_STRING = "..."    # See below
-DEEPSEEK_API_KEY = "..."  # Optional — for AI classification
-MODEL_NAME = "deepseek-chat"
-SOURCE_CHANNEL = -1001234567890  # Channel ID for lead alerts
+DEEPSEEK_API_KEY=your_key
+MODEL_NAME=deepseek-chat
+HISTORY_DEPTH=200
 ```
+
+`config.py` is already in the repo — it reads from `.env` automatically. You only need to create the `.env` file itself.
 
 **Step 2 — Generate a `SESSION_STRING`**
 
@@ -107,7 +109,7 @@ with Client("temp", api_id=API_ID, api_hash=API_HASH) as app:
     print(app.export_session_string())
 ```
 
-Copy the output and paste it as `SESSION_STRING` in `config.py`.
+Copy the output and paste it as SESSION_STRING in your .env
 
 **Step 3 — Marketplace cookies (required for scraping)**
 
@@ -126,7 +128,7 @@ To bypass captcha on Ozon and Wildberries:
 docker build -t orchestrator-app .
 
 docker run -d -p 8501:8501 \
-  -v $(pwd)/config.py:/app/config.py \
+  -v $(pwd)/.env:/app/.env \
   -v $(pwd)/ozon_cookies.json:/app/ozon_cookies.json \
   -v $(pwd)/wb_cookies.json:/app/wb_cookies.json \
   orchestrator-app
@@ -210,7 +212,8 @@ Telegram-Market-Orchestrator/
 ├── watcher.py              # Парсер Telegram + AI-классификатор лидов
 ├── dashboard.py            # Панель управления Streamlit
 ├── db_async.py             # Асинхронная обёртка PostgreSQL (asyncpg)
-├── config.py               # ⚠️ Секретный конфиг (не в репо — см. ниже)
+├── config.py               # Reads settings from .env via python-dotenv
+├── .env                    # ⚠️ Your secrets (not in repo — see below)
 ├── requirements.txt
 ├── Dockerfile
 ├── run.sh                  # Shell-точка входа
@@ -240,23 +243,24 @@ Telegram-Market-Orchestrator/
 
 ### ⚙️ Конфигурация
 
-**Шаг 1 — Создай `config.py`** в корне проекта:
+**Шаг 1 — Создай `.env` файл** в корне проекта:
+```env
+DB_HOST=your_postgres_host
+DB_PORT=5432
+DB_NAME=postgres
+DB_USER=postgres
+DB_PASS=your_password
 
-```python
-# config.py
-DB_HOST = "адрес_твоей_бд"
-DB_NAME = "имя_бд"
-DB_USER = "пользователь"
-DB_PASS = "пароль"
-DB_PORT = "5432"
+API_ID=123456
+API_HASH=your_hash
+SESSION_STRING=...
 
-API_ID = 123456           # С https://my.telegram.org
-API_HASH = "твой_hash"    # С https://my.telegram.org
-SESSION_STRING = "..."    # См. ниже
-DEEPSEEK_API_KEY = "..."  # Опционально — для AI-классификации
-MODEL_NAME = "deepseek-chat"
-SOURCE_CHANNEL = -1001234567890  # ID канала для алертов о лидах
+DEEPSEEK_API_KEY=your_key
+MODEL_NAME=deepseek-chat
+HISTORY_DEPTH=200
 ```
+
+`config.py` уже в репозитории — он читается из `.env` автоматически. Тебе только нужно создать сам файл `.env`.
 
 **Шаг 2 — Сгенерируй `SESSION_STRING`**
 
@@ -269,7 +273,7 @@ with Client("temp", api_id=API_ID, api_hash=API_HASH) as app:
     print(app.export_session_string())
 ```
 
-Скопируй вывод и вставь как `SESSION_STRING` в `config.py`.
+Скопируй вывод и вставь как `SESSION_STRING` в `.env`.
 
 **Шаг 3 — Куки маркетплейсов (обязательно для парсинга)**
 
@@ -288,7 +292,7 @@ with Client("temp", api_id=API_ID, api_hash=API_HASH) as app:
 docker build -t orchestrator-app .
 
 docker run -d -p 8501:8501 \
-  -v $(pwd)/config.py:/app/config.py \
+  -v $(pwd)/.env:/app/.env \
   -v $(pwd)/ozon_cookies.json:/app/ozon_cookies.json \
   -v $(pwd)/wb_cookies.json:/app/wb_cookies.json \
   orchestrator-app
