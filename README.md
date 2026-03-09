@@ -1,58 +1,86 @@
-# Telegram & Market Semantic Orchestrator
+# 🤖 Telegram & Market Semantic Orchestrator
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Container-2496ED?logo=docker&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-336791?logo=postgresql&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Frontend-Streamlit-FF4B4B?logo=streamlit&logoColor=white)
 
-Automated system for monitoring Telegram chats and analyzing marketplace data (Wildberries/Ozon).
-Containerized deployment ready for TrueNAS Scale.
+Automated system for monitoring Telegram chats, AI-classifying leads, and tracking product prices on Russian marketplaces (Wildberries / Ozon). Containerized and ready for self-hosted deployment on TrueNAS Scale or any Linux server.
 
-[ 🇬🇧 English Version ](#-english-version) | [ 🇷🇺 Русская версия ](#-русская-версия)
+[ 🇬🇧 English](#-english) | [ 🇷🇺 Русский](#-русский)
 
+---
 
-🇬🇧 English Version
+## 🇬🇧 English
 
-🏗 System Architecture
+### 🏗️ Architecture
 
-The system consists of three main components that interact via a PostgreSQL database:
+Three independent components communicating through a shared PostgreSQL database:
 
-1.  👁️ The Watcher (Telegram Parser)
-    * Built with `Pyrogram` (MTProto).
-    * Supports both real-time monitoring (`OnNewMessage`) and deep history parsing.
-    * FloodWait Handler: Automatically manages Telegram API rate limits.
-    * Smart Filtering: Distinguishes between Leads and Spam based on internal logic.
+**1. 👁️ Watcher (`watcher.py`) — Telegram Parser**
+- Built with Pyrogram (MTProto user-account API)
+- Scans configured Telegram chats for new messages on a continuous loop
+- Classifies each message with **DeepSeek AI** into one of four roles: `LEAD`, `SPAM`, `EXPERT`, `MIMO`
+- Saves qualifying leads to the database and sends instant alerts to a designated Telegram channel
+- Handles FloodWait automatically; manages its own lifecycle via a PID file
 
-2.  🛍️ Market Watcher
-    * Built with Playwright (Async) and Python.
-    * Headless browser automation for parsing product prices and availability on marketplaces.
+**2. 🛍️ MarketWatcher (`MarketWatcher/`) — Marketplace Parser**
+- Built with Playwright (async headless browser)
+- Tracks product prices and availability on Ozon and Wildberries
+- Uses cookie-based session injection to bypass captcha and login screens
+- AI-powered price analysis via `market_ai.py`
 
-3.  📊 Web Dashboard (Control Center)
-    * Built with `Streamlit`.
-    * Process Management: Start/stop background processes via GUI (PID management).
-    * Observability: Displays real-time logs and system status.
-    * CRUD Operations: Manage the monitored chat list directly from the interface.
+**3. 📊 Dashboard (`dashboard.py`) — Web Control Panel**
+- Built with Streamlit
+- Start / stop background processes directly from the UI (PID management)
+- Real-time log viewer streamed from `debug_log.txt`
+- Full CRUD for the monitored chat list
+- Lead statistics and activity feed
 
+![Dashboard screenshot](https://github.com/user-attachments/assets/304346e5-0d09-42a1-8e65-8130ecc4bd14)
 
-![Снимок экрана 2026-02-11 060606](https://github.com/user-attachments/assets/304346e5-0d09-42a1-8e65-8130ecc4bd14)
+---
 
+### 🗂️ Project Structure
 
-💾 Database Structure
-The project uses PostgreSQL for persistent storage:
-1. monitored_chats: Stores target chat links, parsing depth, and active status.
-2. leads: Stores captured messages that passed the filter, including metadata (sender, timestamp, content).
+```
+Telegram-Market-Orchestrator/
+├── watcher.py              # Telegram parser + AI lead classifier
+├── dashboard.py            # Streamlit control panel
+├── db_async.py             # Async PostgreSQL wrapper (asyncpg)
+├── config.py               # ⚠️ Secret config (not in repo — see below)
+├── requirements.txt
+├── Dockerfile
+├── run.sh                  # Shell entrypoint
+└── MarketWatcher/
+    ├── parser_engine.py    # Playwright scraper for WB / Ozon
+    ├── ozon_api_engine.py  # Ozon API integration
+    ├── market_ai.py        # AI price analysis
+    ├── db_market.py        # Market-specific DB operations
+    ├── db_async.py         # Async DB wrapper (module copy)
+    ├── reanalyzer.py       # Re-run AI analysis on existing data
+    ├── stealth_patch.py    # Playwright stealth settings
+    └── fix_ratings.py      # Data correction utility
+```
 
-🛠 Installation & Setup
-1. Clone the repository:
-git clone [https://github.com/zzeygarnik/Telegram-Market-Orchestrator.git](https://github.com/zzeygarnik/Telegram-Market-Orchestrator.git)
-cd Telegram-Market-Orchestrator
+> ⚠️ `config.py`, `*.session`, `ozon_cookies.json`, and `wb_cookies.json` are excluded from the repository and must never be committed.
 
-2. Configuration
-⚠️ Important: Configuration files and session cookies are excluded from the repository for security reasons.
+---
 
-Step A: Create `config.py`
-Create a file named `config.py` in the root directory:
+### 💾 Database Structure
 
+| Table | Purpose |
+|---|---|
+| `monitored_chats` | Target chat links, parsing depth, scan progress, active status |
+| `leads` | Classified messages: user ID, username, AI-assigned role, intent summary, source chat |
+
+---
+
+### ⚙️ Configuration
+
+**Step 1 — Create `config.py`** in the project root:
+
+```python
 # config.py
 DB_HOST = "your_postgres_host"
 DB_NAME = "your_db_name"
@@ -60,142 +88,248 @@ DB_USER = "your_db_user"
 DB_PASS = "your_db_password"
 DB_PORT = "5432"
 
-API_ID = 123456          # From my.telegram.org
-API_HASH = "your_hash"   # From my.telegram.org
-SESSION_STRING = "..."   # Pyrogram session string (generated via helper script)
-DEEPSEEK_API_KEY = "..." # (Optional) For AI Analysis
+API_ID = 123456           # From https://my.telegram.org
+API_HASH = "your_hash"    # From https://my.telegram.org
+SESSION_STRING = "..."    # See below
+DEEPSEEK_API_KEY = "..."  # Optional — for AI classification
+MODEL_NAME = "deepseek-chat"
+SOURCE_CHANNEL = -1001234567890  # Channel ID for lead alerts
+```
 
-Step B: Marketplace Cookies (Required for Parsing) To bypass captchas and login screens on Ozon/Wildberries, you must provide valid session cookies.
+**Step 2 — Generate a `SESSION_STRING`**
 
-   1. Log in to the marketplace in your browser.
+The watcher uses a Pyrogram string session (no `.session` file needed). Run this snippet once locally:
 
-   2. Use an extension like EditThisCookie to export cookies as JSON.
+```python
+from pyrogram import Client
 
-   3. Save them in the root directory as:
-      ozon_cookies.json
-      wb_cookies.json
+with Client("temp", api_id=API_ID, api_hash=API_HASH) as app:
+    print(app.export_session_string())
+```
 
+Copy the output and paste it as `SESSION_STRING` in `config.py`.
 
-2. Обнови раздел "Docker Deployment" (добавили проброс куков):
+**Step 3 — Marketplace cookies (required for scraping)**
 
-3. Docker Deployment
-The project includes a Dockerfile for building the image.
+To bypass captcha on Ozon and Wildberries:
+1. Log in to the marketplace in your browser
+2. Export cookies as JSON using an extension like [EditThisCookie](https://editthiscookie.com/)
+3. Save them in the project root as `ozon_cookies.json` and `wb_cookies.json`
 
-# Build the image
+---
+
+### 🚀 Deployment
+
+**Docker (recommended):**
+
+```bash
 docker build -t orchestrator-app .
 
-# Run the container
-# We mount config.py AND cookie files to persist sessions
 docker run -d -p 8501:8501 \
   -v $(pwd)/config.py:/app/config.py \
   -v $(pwd)/ozon_cookies.json:/app/ozon_cookies.json \
   -v $(pwd)/wb_cookies.json:/app/wb_cookies.json \
   orchestrator-app
+```
 
-3. Docker Deployment
-The project includes a Dockerfile for building the image.
+**Local run:**
 
-# Build the image
-docker build -t orchestrator-app .
+```bash
+pip install -r requirements.txt
+playwright install chromium
+streamlit run dashboard.py
+```
 
-# Run the container (ensure config.py is mounted correctly)
-docker run -d -p 8501:8501 -v $(pwd)/config.py:/app/config.py orchestrator-app
+---
 
-🖥 Usage:
-   access the dashboard via your browser at http://localhost:8501 (or your server IP).
-   dashboard Tab: View statistics on collected leads and recent activity.
-   chats Tab: Add new Telegram channels/groups. Supports standard links (t.me/...) and usernames (@name).
-   logs: Monitor backend process output directly from the web interface.
+### 🖥️ Usage
 
+Open [http://localhost:8501](http://localhost:8501) in your browser.
 
+- **Dashboard** — lead statistics and recent activity feed
+- **Chats** — add Telegram channels or groups to monitor; supports `t.me/...` links and `@username` handles
+- **Logs** — live output from the watcher process
 
+---
 
-🇷🇺 Русская версия
-   🏗 Архитектура системы
-   Проект представляет собой оркестратор из трех компонентов, взаимодействующих через базу данных PostgreSQL:
+### 📦 Tech Stack
 
-👁️ The Watcher (Парсер Telegram)
-   Написан на Pyrogram (MTProto).
-   Поддерживает мониторинг в реальном времени и глубокий парсинг истории.
-   Автоматическая обработка ограничений Telegram (FloodWait).
-   Фильтрация сообщений (Лиды vs Спам) и сохранение результатов в БД.
+| Component | Technology |
+|---|---|
+| Telegram API | [Pyrogram](https://pyrogram.org/) (MTProto) |
+| Marketplace scraping | [Playwright](https://playwright.dev/python/) (async) |
+| AI classification | [DeepSeek](https://platform.deepseek.com/) via OpenAI SDK |
+| Database | PostgreSQL via [asyncpg](https://github.com/MagicStack/asyncpg) |
+| Dashboard | [Streamlit](https://streamlit.io/) |
+| Containerization | Docker |
+| Hosting | TrueNAS Scale / any Linux server |
 
-🛍️ Market Watcher
-   Использует Playwright (Async) и Python.
-   Headless-автоматизация браузера для сбора цен и остатков товаров с маркетплейсов.
+---
 
-📊 Web Dashboard (Панель управления)
-   Реализована на Streamlit.
-   Управление процессами: Запуск/остановка фоновых задач (PID менеджмент).
-   Логи: просмотр статуса и вывода консоли в реальном времени.
-   Управление чатами: Добавление и настройка отслеживаемых каналов через GUI.
+### 🔒 Security Notes
 
-💾 Структура Базы Данных
-monitored_chats: Ссылки на целевые чаты, настройки глубины парсинга, статус активности.
-leads: Отфильтрованные сообщения с метаданными (отправитель, время, текст).
+- Never commit `config.py` — it contains your Telegram session and API keys
+- `SESSION_STRING` provides full access to your Telegram account
+- Cookie files (`*.json`) may contain active marketplace sessions — treat them as secrets
 
-🛠 Установка и запуск
-1. Клонирование репозитория
-git clone [https://github.com/zzeygarnik/Telegram-Market-Orchestrator.git](https://github.com/zzeygarnik/Telegram-Market-Orchestrator.git)
-cd Telegram-Market-Orchestrator
+---
+---
 
-2. Конфигурация
-⚠️ Важно: Файлы конфигурации и куки сессий исключены из репозитория в целях безопасности.
+## 🇷🇺 Русский
 
-Шаг А: Создание `config.py`
-Создайте файл `config.py` в корне проекта:
+### 🏗️ Архитектура
 
+Три независимых компонента, взаимодействующих через общую базу данных PostgreSQL:
+
+**1. 👁️ Watcher (`watcher.py`) — Парсер Telegram**
+- Написан на Pyrogram (MTProto, пользовательский аккаунт)
+- Циклически обходит список отслеживаемых Telegram-чатов
+- Классифицирует каждое сообщение через **DeepSeek AI** по четырём ролям: `LEAD`, `SPAM`, `EXPERT`, `MIMO`
+- Сохраняет квалифицированные лиды в БД и отправляет алерты в указанный Telegram-канал
+- Автоматически обрабатывает FloodWait; управляет жизненным циклом через PID-файл
+
+**2. 🛍️ MarketWatcher (`MarketWatcher/`) — Парсер маркетплейсов**
+- Написан на Playwright (async headless-браузер)
+- Отслеживает цены и остатки товаров на Ozon и Wildberries
+- Использует инъекцию куков для обхода капчи и авторизации
+- AI-анализ цен через `market_ai.py`
+
+**3. 📊 Dashboard (`dashboard.py`) — Веб-панель управления**
+- Написан на Streamlit
+- Запуск / остановка фоновых процессов прямо из интерфейса (PID-менеджмент)
+- Просмотр логов в реальном времени из `debug_log.txt`
+- Полный CRUD для списка отслеживаемых чатов
+- Статистика по лидам и лента активности
+
+---
+
+### 🗂️ Структура проекта
+
+```
+Telegram-Market-Orchestrator/
+├── watcher.py              # Парсер Telegram + AI-классификатор лидов
+├── dashboard.py            # Панель управления Streamlit
+├── db_async.py             # Асинхронная обёртка PostgreSQL (asyncpg)
+├── config.py               # ⚠️ Секретный конфиг (не в репо — см. ниже)
+├── requirements.txt
+├── Dockerfile
+├── run.sh                  # Shell-точка входа
+└── MarketWatcher/
+    ├── parser_engine.py    # Playwright-скрапер для WB / Ozon
+    ├── ozon_api_engine.py  # Интеграция с API Ozon
+    ├── market_ai.py        # AI-анализ цен
+    ├── db_market.py        # DB-операции для маркетплейсов
+    ├── db_async.py         # Копия обёртки БД для модуля
+    ├── reanalyzer.py       # Повторный AI-анализ существующих данных
+    ├── stealth_patch.py    # Stealth-настройки Playwright
+    └── fix_ratings.py      # Утилита исправления данных
+```
+
+> ⚠️ Файлы `config.py`, `*.session`, `ozon_cookies.json` и `wb_cookies.json` исключены из репозитория и никогда не должны туда попадать.
+
+---
+
+### 💾 Структура базы данных
+
+| Таблица | Назначение |
+|---|---|
+| `monitored_chats` | Ссылки на целевые чаты, глубина парсинга, прогресс сканирования, статус |
+| `leads` | Классифицированные сообщения: ID пользователя, юзернейм, роль, AI-описание интента, источник |
+
+---
+
+### ⚙️ Конфигурация
+
+**Шаг 1 — Создай `config.py`** в корне проекта:
+
+```python
 # config.py
-DB_HOST = "your_postgres_host"
-DB_NAME = "your_db_name"
-DB_USER = "your_db_user"
-DB_PASS = "your_db_password"
+DB_HOST = "адрес_твоей_бд"
+DB_NAME = "имя_бд"
+DB_USER = "пользователь"
+DB_PASS = "пароль"
 DB_PORT = "5432"
 
-API_ID = 123456          # Получить на my.telegram.org
-API_HASH = "your_hash"   # Получить на my.telegram.org
-SESSION_STRING = "..."   # Строка сессии Pyrogram (генерируется скриптом)
-DEEPSEEK_API_KEY = "..." # (Опционально) Для AI-анализа
+API_ID = 123456           # С https://my.telegram.org
+API_HASH = "твой_hash"    # С https://my.telegram.org
+SESSION_STRING = "..."    # См. ниже
+DEEPSEEK_API_KEY = "..."  # Опционально — для AI-классификации
+MODEL_NAME = "deepseek-chat"
+SOURCE_CHANNEL = -1001234567890  # ID канала для алертов о лидах
+```
 
-Шаг Б: Куки для Маркетплейсов Для обхода капчи и авторизации на Ozon/Wildberries необходимы актуальные куки.
-   1. Авторизуйтесь на маркетплейсе в браузере.
+**Шаг 2 — Сгенерируй `SESSION_STRING`**
 
-   2. Используйте расширение (например, EditThisCookie) для экспорта куков в JSON.
+Watcher использует строковую сессию Pyrogram (файл `.session` не нужен). Запусти этот снипет один раз локально:
 
-   3. Сохраните файлы в корне проекта под именами:
-      ozon_cookies.json
-      wb_cookies.json
+```python
+from pyrogram import Client
 
+with Client("temp", api_id=API_ID, api_hash=API_HASH) as app:
+    print(app.export_session_string())
+```
 
-2. Обнови раздел "Развертывание в Docker":
+Скопируй вывод и вставь как `SESSION_STRING` в `config.py`.
 
-3. Развертывание в Docker
-Проект готов к сборке через Dockerfile.
+**Шаг 3 — Куки маркетплейсов (обязательно для парсинга)**
 
-# Сборка образа
+Для обхода капчи на Ozon и Wildberries:
+1. Авторизуйся на маркетплейсе в браузере
+2. Экспортируй куки в JSON через расширение [EditThisCookie](https://editthiscookie.com/)
+3. Сохрани файлы в корне проекта: `ozon_cookies.json` и `wb_cookies.json`
+
+---
+
+### 🚀 Развёртывание
+
+**Docker (рекомендуется):**
+
+```bash
 docker build -t orchestrator-app .
 
-# Запуск контейнера
-# Пробрасываем конфиг И файлы куков внутрь контейнера
 docker run -d -p 8501:8501 \
   -v $(pwd)/config.py:/app/config.py \
   -v $(pwd)/ozon_cookies.json:/app/ozon_cookies.json \
   -v $(pwd)/wb_cookies.json:/app/wb_cookies.json \
   orchestrator-app
-3. Развертывание в Docker
-Проект готов к сборке через Dockerfile.
-# Сборка образа
-docker build -t orchestrator-app .
+```
 
-# Запуск контейнера (убедитесь, что config.py актуализирован)
-docker run -d -p 8501:8501 -v $(pwd)/config.py:/app/config.py orchestrator-app
+**Локальный запуск:**
 
-🖥 Использование
-   Дашборд доступен по адресу http://localhost:8501 (или IP вашего сервера).
-   Вкладка Dashboard: Статистика по лидам и лента событий.
-   Вкладка Чаты: Добавление каналов для мониторинга. Поддерживаются ссылки (t.me/...) и юзернеймы (@name).
-   Логи: Просмотр логов бота прямо в интерфейсе.
+```bash
+pip install -r requirements.txt
+playwright install chromium
+streamlit run dashboard.py
+```
 
-Tech Stack
-Python 3.10+ Pyrogram Streamlit Pandas Psycopg2 Playwright Docker TrueNAS Scale
+---
 
+### 🖥️ Использование
+
+Открой [http://localhost:8501](http://localhost:8501) в браузере.
+
+- **Dashboard** — статистика по лидам и лента последних событий
+- **Чаты** — добавление каналов и групп для мониторинга; поддерживаются ссылки `t.me/...` и юзернеймы `@name`
+- **Логи** — вывод watcher-процесса в реальном времени
+
+---
+
+### 📦 Технологии
+
+| Компонент | Технология |
+|---|---|
+| Telegram API | [Pyrogram](https://pyrogram.org/) (MTProto) |
+| Парсинг маркетплейсов | [Playwright](https://playwright.dev/python/) (async) |
+| AI-классификация | [DeepSeek](https://platform.deepseek.com/) через OpenAI SDK |
+| База данных | PostgreSQL через [asyncpg](https://github.com/MagicStack/asyncpg) |
+| Дашборд | [Streamlit](https://streamlit.io/) |
+| Контейнеризация | Docker |
+| Хостинг | TrueNAS Scale / любой Linux-сервер |
+
+---
+
+### 🔒 Безопасность
+
+- Никогда не коммить `config.py` — там хранятся сессия Telegram и ключи API
+- `SESSION_STRING` даёт полный доступ к твоему аккаунту Telegram
+- Файлы куков (`*.json`) могут содержать активные сессии маркетплейсов — обращайся с ними как с секретами
