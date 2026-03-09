@@ -212,8 +212,8 @@ Telegram-Market-Orchestrator/
 ├── watcher.py              # Парсер Telegram + AI-классификатор лидов
 ├── dashboard.py            # Панель управления Streamlit
 ├── db_async.py             # Асинхронная обёртка PostgreSQL (asyncpg)
-├── config.py               # Reads settings from .env via python-dotenv
-├── .env                    # ⚠️ Your secrets (not in repo — see below)
+├── config.py               # Читает настройки из .env
+├── .env                    # ⚠️ Твои секретные данные (не должны быть в репозитории)
 ├── requirements.txt
 ├── Dockerfile
 ├── run.sh                  # Shell-точка входа
